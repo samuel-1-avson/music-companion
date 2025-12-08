@@ -6,34 +6,50 @@ interface SidebarProps {
   currentView: AppView;
   onChangeView: (view: AppView) => void;
   spotifyProfile?: SpotifyProfile | null;
+  isListeningForWakeWord?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyProfile }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyProfile, isListeningForWakeWord }) => {
   const navItems = [
     { id: AppView.DASHBOARD, label: 'Dashboard', icon: ICONS.Dashboard },
     { id: AppView.CHAT, label: 'Chat Assistant', icon: ICONS.MessageSquare },
     { id: AppView.LIVE, label: 'Live Mode', icon: ICONS.Live },
+    { id: AppView.OFFLINE, label: 'Offline Hub', icon: ICONS.Offline },
+    { id: AppView.ARCADE, label: 'Retro Arcade', icon: ICONS.Game },
+    { id: AppView.LAB, label: 'Sonic Lab', icon: ICONS.Sliders },
+    { id: AppView.EXTENSIONS, label: 'Extensions', icon: ICONS.Box },
     { id: AppView.SETTINGS, label: 'Settings', icon: ICONS.Settings },
   ];
 
   return (
-    <div className="w-64 bg-white border-r-2 border-black flex flex-col h-screen fixed left-0 top-0 z-10">
-      <div className="p-6 flex items-center space-x-3 border-b-2 border-black">
+    <div className="w-64 bg-[var(--bg-card)] border-r-2 border-theme flex flex-col h-screen fixed left-0 top-0 z-10 transition-colors duration-300">
+      <div className="p-6 flex items-center space-x-3 border-b-2 border-theme relative overflow-hidden">
+        {isListeningForWakeWord && (
+            <div className="absolute top-0 right-0 p-1">
+                <span className="flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--primary)] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[var(--primary-hover)]"></span>
+                </span>
+            </div>
+        )}
         <div className="w-10 h-10 bg-black rounded-none flex items-center justify-center shadow-retro-sm border-2 border-black">
           <ICONS.Music className="text-white w-5 h-5" />
         </div>
-        <h1 className="text-xl font-bold tracking-tight font-mono">Music<span className="text-orange-500">Comp</span></h1>
+        <div>
+            <h1 className="text-xl font-bold tracking-tight font-mono leading-none text-[var(--text-main)]">Music<span className="text-[var(--primary)]">Comp</span></h1>
+            {isListeningForWakeWord && <p className="text-[9px] font-mono text-[var(--text-muted)]">LISTENING: "MELODY"</p>}
+        </div>
       </div>
 
-      <nav className="flex-1 px-4 space-y-3 mt-6">
+      <nav className="flex-1 px-4 space-y-3 mt-6 overflow-y-auto">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onChangeView(item.id)}
             className={`w-full flex items-center space-x-3 px-4 py-3 border-2 transition-all duration-200 ${
               currentView === item.id 
-                ? 'bg-orange-400 text-black border-black shadow-retro-sm translate-x-[-2px] translate-y-[-2px]' 
-                : 'bg-white text-gray-600 border-transparent hover:border-black hover:shadow-retro-sm hover:text-black'
+                ? 'bg-[var(--primary)] text-black border-theme shadow-retro-sm translate-x-[-2px] translate-y-[-2px]' 
+                : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-transparent hover:border-theme hover:shadow-retro-sm hover:text-[var(--text-main)]'
             }`}
           >
             <item.icon size={20} strokeWidth={2.5} />
@@ -47,20 +63,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
             className={`w-full flex items-center space-x-3 px-4 py-3 border-2 transition-all duration-200 mt-8 ${
               currentView === AppView.FOCUS
                 ? 'bg-black text-white border-black shadow-retro-sm' 
-                : 'bg-gray-100 text-gray-600 border-transparent hover:border-gray-400 hover:text-black'
+                : 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-transparent hover:border-[var(--text-muted)] hover:text-[var(--text-main)]'
             }`}
           >
             <div className="relative">
                 <ICONS.Play size={20} strokeWidth={2.5} />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-[var(--primary)] rounded-full animate-pulse"></span>
             </div>
             <span className="font-bold font-mono">Focus Mode</span>
         </button>
       </nav>
 
-      <div className="p-4 border-t-2 border-black bg-[#f3f0e8] space-y-4">
+      <div className="p-4 border-t-2 border-theme bg-[var(--bg-hover)] space-y-4">
         {spotifyProfile ? (
-           <div className="bg-white p-3 border-2 border-black shadow-retro-sm flex items-center space-x-3">
+           <div className="bg-[var(--bg-card)] p-3 border-2 border-theme shadow-retro-sm flex items-center space-x-3">
              <div className="w-10 h-10 bg-gray-200 border border-black overflow-hidden flex-shrink-0">
                {spotifyProfile.images?.[0]?.url ? (
                  <img src={spotifyProfile.images[0].url} alt="Profile" className="w-full h-full object-cover" />
@@ -71,16 +87,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
                )}
              </div>
              <div className="overflow-hidden">
-               <p className="text-[10px] font-bold text-gray-500 font-mono uppercase">CONNECTED_AS</p>
-               <p className="text-sm font-bold truncate">{spotifyProfile.display_name}</p>
+               <p className="text-[10px] font-bold text-[var(--text-muted)] font-mono uppercase">CONNECTED_AS</p>
+               <p className="text-sm font-bold truncate text-[var(--text-main)]">{spotifyProfile.display_name}</p>
              </div>
            </div>
         ) : (
-          <div className="bg-white p-4 border-2 border-black shadow-retro-sm">
-            <p className="text-xs text-gray-500 font-bold font-mono mb-2 uppercase tracking-wider">Status</p>
+          <div className="bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm">
+            <p className="text-xs text-[var(--text-muted)] font-bold font-mono mb-2 uppercase tracking-wider">Status</p>
             <div className="flex items-center space-x-2">
               <span className="w-3 h-3 border-2 border-black bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-sm font-bold">System Online</span>
+              <span className="text-sm font-bold text-[var(--text-main)]">System Online</span>
             </div>
           </div>
         )}

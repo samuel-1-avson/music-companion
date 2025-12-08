@@ -1,3 +1,4 @@
+
 import { 
   Music, 
   Mic, 
@@ -27,7 +28,31 @@ import {
   ExternalLink,
   User,
   ScreenShare,
-  Save
+  Save,
+  Code,
+  Globe,
+  Terminal,
+  Cpu,
+  Zap,
+  Box,
+  Sliders,
+  CloudRain,
+  Piano,
+  Coffee,
+  Wind,
+  Award,
+  ArrowRight,
+  Power,
+  Gamepad2,
+  HardDrive,
+  CloudDownload,
+  FileAudio,
+  Trash2,
+  ListMusic,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Activity
 } from 'lucide-react';
 
 export const ICONS = {
@@ -61,7 +86,31 @@ export const ICONS = {
   ExternalLink,
   User,
   ScreenShare,
-  Save
+  Save,
+  Code,
+  Globe,
+  Terminal,
+  Cpu,
+  Zap,
+  Box,
+  Sliders,
+  Rain: CloudRain,
+  Piano,
+  Coffee,
+  Wind,
+  Award,
+  ArrowRight,
+  Power,
+  Game: Gamepad2,
+  Offline: HardDrive,
+  DownloadCloud: CloudDownload,
+  FileAudio,
+  Trash: Trash2,
+  ListMusic,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Activity
 };
 
 export const MOCK_SONGS: any[] = [

@@ -1,14 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { ICONS } from '../constants';
 import { generatePlaylistFromContext } from '../services/geminiService';
-import { Song } from '../types';
+import { Song, MusicProvider } from '../types';
 
 interface VibeSnapProps {
   onPlaylistGenerated: (songs: Song[]) => void;
   spotifyToken?: string | null;
+  musicProvider?: MusicProvider;
 }
 
-const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken }) => {
+const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken, musicProvider = 'YOUTUBE' }) => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +27,8 @@ const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken }
       setIsCameraOpen(true);
     } catch (e: any) {
       console.error("Camera access denied", e);
-      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-         setError("Camera access denied. Please allow permissions.");
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.message?.includes('Permission denied')) {
+         setError("Camera permission denied. Check browser settings.");
       } else {
          setError("Could not access camera device.");
       }
@@ -59,7 +60,7 @@ const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken }
       stopCamera(); // Close camera immediately after snap
 
       try {
-        const { songs } = await generatePlaylistFromContext("Generate a vibe based on this visual context.", base64, spotifyToken || undefined);
+        const { songs } = await generatePlaylistFromContext("Generate a vibe based on this visual context.", musicProvider, base64, spotifyToken || undefined);
         onPlaylistGenerated(songs);
       } catch (e) {
         console.error("Vibe Snap Failed", e);
@@ -81,7 +82,7 @@ const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken }
             Vibe_Snap
          </h3>
          <p className="text-gray-400 text-sm mb-4 font-mono">
-            Scan your face or room. Let AI generate the soundtrack.
+            Scan your face or room. Let AI generate the soundtrack via {musicProvider}.
          </p>
 
          {error && (

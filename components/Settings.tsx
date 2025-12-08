@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { getSpotifyAuthUrl } from '../services/spotifyService';
-import { SpotifyProfile } from '../types';
+import { SpotifyProfile, Theme, MusicProvider } from '../types';
 
 interface SettingsProps {
   spotifyToken: string | null;
   spotifyProfile?: SpotifyProfile | null;
   onDisconnect: () => void;
+  currentTheme: Theme;
+  onSetTheme: (t: Theme) => void;
+  musicProvider: MusicProvider;
+  onSetMusicProvider: (p: MusicProvider) => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDisconnect }) => {
+const Settings: React.FC<SettingsProps> = ({ 
+    spotifyToken, 
+    spotifyProfile, 
+    onDisconnect, 
+    currentTheme, 
+    onSetTheme,
+    musicProvider,
+    onSetMusicProvider
+}) => {
   const [clientId, setClientId] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
   const [copied, setCopied] = useState(false);
@@ -107,23 +119,113 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
 
   const isInsecure = redirectUri.startsWith('http://') && !redirectUri.includes('localhost') && !redirectUri.includes('127.0.0.1');
   const isConnecting = connectPhase !== 'idle';
+  
+  const themes: { id: Theme; label: string; bg: string; color: string }[] = [
+      { id: 'minimal', label: 'Minimal', bg: '#ffffff', color: '#18181b' },
+      { id: 'classic', label: 'Classic', bg: '#fcfbf9', color: '#fb923c' },
+      { id: 'cyber', label: 'Cyber', bg: '#09090b', color: '#22d3ee' },
+      { id: 'forest', label: 'Forest', bg: '#f0fdf4', color: '#4ade80' },
+      { id: 'lavender', label: 'Lavender', bg: '#faf5ff', color: '#d8b4fe' }
+  ];
+
+  const providers: { id: MusicProvider; label: string; icon: any }[] = [
+      { id: 'SPOTIFY', label: 'Spotify', icon: ICONS.Music },
+      { id: 'YOUTUBE', label: 'YouTube', icon: ICONS.Play },
+      { id: 'APPLE', label: 'Apple Music', icon: ICONS.Radio },
+      { id: 'DEEZER', label: 'Deezer', icon: ICONS.Activity }, // Using Activity for Deezer pulse
+  ];
 
   return (
     <div className="max-w-4xl mx-auto p-8 space-y-8 pb-32">
       <div>
-        <h2 className="text-4xl font-bold text-black mb-2 font-mono border-b-4 border-black inline-block">SETTINGS</h2>
-        <p className="text-gray-600 font-mono mt-2">SYSTEM_CONFIGURATION</p>
+        <h2 className="text-4xl font-bold text-[var(--text-main)] mb-2 font-mono border-b-4 border-theme inline-block">SETTINGS</h2>
+        <p className="text-[var(--text-muted)] font-mono mt-2">SYSTEM_CONFIGURATION</p>
+      </div>
+      
+      {/* Theme Selector */}
+      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
+          <div className="flex items-center space-x-4 border-b-2 border-theme pb-4 mb-6">
+             <div className="bg-[var(--primary)] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
+                <ICONS.Image size={24} className="text-[var(--text-main)]" />
+             </div>
+             <div>
+                <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">UI_THEME</h3>
+                <p className="text-xs text-[var(--text-muted)] font-mono">Select your visual interface.</p>
+             </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {themes.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => onSetTheme(t.id)}
+                    className={`relative p-4 border-2 transition-all group overflow-hidden ${currentTheme === t.id ? 'border-theme ring-2 ring-[var(--primary)] shadow-retro-sm' : 'border-gray-200 hover:border-theme'}`}
+                    style={{ backgroundColor: t.bg }}
+                  >
+                      <div className="flex flex-col items-center gap-2 relative z-10">
+                          <div className="w-8 h-8 rounded-full border-2 border-black" style={{ backgroundColor: t.color }}></div>
+                          <span className="font-bold font-mono text-xs uppercase" style={{ color: t.id === 'cyber' ? '#fff' : '#000' }}>{t.label}</span>
+                      </div>
+                      {currentTheme === t.id && (
+                          <div className="absolute top-2 right-2 text-[var(--text-main)]">
+                              <ICONS.Check size={16} />
+                          </div>
+                      )}
+                  </button>
+              ))}
+          </div>
       </div>
 
-      <div className="bg-white border-2 border-black p-8 space-y-8 shadow-retro">
-        <div className="flex items-center justify-between border-b-2 border-black pb-4">
+      {/* Music Provider Selector */}
+      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
+          <div className="flex items-center space-x-4 border-b-2 border-theme pb-4 mb-6">
+             <div className="bg-black text-white border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
+                <ICONS.Music size={24} />
+             </div>
+             <div>
+                <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">MUSIC_SOURCE</h3>
+                <p className="text-xs text-[var(--text-muted)] font-mono">Select default search & playback provider.</p>
+             </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {providers.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => onSetMusicProvider(p.id)}
+                    className={`p-4 border-2 transition-all flex flex-col items-center gap-3 relative ${
+                        musicProvider === p.id 
+                        ? 'border-theme bg-[var(--bg-hover)] shadow-retro-sm' 
+                        : 'border-gray-200 hover:border-theme'
+                    }`}
+                  >
+                      <p.icon size={32} className={musicProvider === p.id ? 'text-[var(--primary)]' : 'text-gray-400'} />
+                      <span className="font-bold font-mono text-sm uppercase text-[var(--text-main)]">{p.label}</span>
+                      {musicProvider === p.id && (
+                          <div className="absolute top-2 right-2 text-[var(--primary)]">
+                              <ICONS.Check size={16} />
+                          </div>
+                      )}
+                  </button>
+              ))}
+          </div>
+          
+          {musicProvider === 'SPOTIFY' && !spotifyToken && (
+              <div className="mt-4 p-2 bg-red-100 border border-red-500 text-red-700 text-xs font-mono font-bold text-center">
+                  WARNING: SPOTIFY REQUIRES LOGIN BELOW.
+              </div>
+          )}
+      </div>
+
+      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 space-y-8 shadow-retro">
+        <div className="flex items-center justify-between border-b-2 border-theme pb-4">
           <div className="flex items-center space-x-4">
-            <div className="bg-[#1DB954] border-2 border-black p-2 flex items-center justify-center shadow-retro-sm">
+            <div className="bg-[#1DB954] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
                <ICONS.Music size={24} className="text-black" />
             </div>
             <div>
-               <h3 className="text-2xl font-bold font-mono">SPOTIFY_LINK</h3>
-               <p className="text-xs text-gray-500 font-mono">Unlock full song access and personalized AI DJ</p>
+               <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">SPOTIFY_LINK</h3>
+               <p className="text-xs text-[var(--text-muted)] font-mono">Required only if using Spotify Provider.</p>
             </div>
           </div>
           {spotifyToken && (
@@ -147,7 +249,7 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                       </div>
                       <div>
                          <p className="text-xs font-bold text-green-800 font-mono uppercase mb-1">Authenticated As</p>
-                         <h4 className="text-xl font-bold">{spotifyProfile?.display_name || "Spotify User"}</h4>
+                         <h4 className="text-xl font-bold text-black">{spotifyProfile?.display_name || "Spotify User"}</h4>
                          <p className="text-sm text-gray-600">{spotifyProfile?.email}</p>
                       </div>
                    </div>
@@ -159,9 +261,6 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                    </button>
                 </div>
              </div>
-             <p className="text-center text-sm font-mono text-gray-500">
-                AI Agent now has read-access to your library and listening history.
-             </p>
           </div>
         ) : (
           <div className="space-y-8">
@@ -171,9 +270,9 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                 <div className="flex-1 space-y-3">
                    <div className="flex justify-between items-start">
                        <div>
-                         <h4 className="font-bold text-lg">Set Redirect URI</h4>
-                         <p className="text-sm text-gray-600">
-                            Add this <strong>EXACTLY</strong> to your <a href="https://developer.spotify.com/dashboard" target="_blank" className="font-bold underline hover:text-orange-600 inline-flex items-center">Spotify Dashboard <ICONS.ExternalLink size={12} className="ml-1" /></a>.
+                         <h4 className="font-bold text-lg text-[var(--text-main)]">Set Redirect URI</h4>
+                         <p className="text-sm text-[var(--text-muted)]">
+                            Add this <strong>EXACTLY</strong> to your <a href="https://developer.spotify.com/dashboard" target="_blank" className="font-bold underline hover:text-[var(--primary)] inline-flex items-center">Spotify Dashboard <ICONS.ExternalLink size={12} className="ml-1" /></a>.
                          </p>
                        </div>
                        {!isEditingUri ? (
@@ -189,17 +288,17 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                           type="text" 
                           value={redirectUri} 
                           onChange={(e) => setRedirectUri(e.target.value)}
-                          className="flex-1 bg-white border-2 border-black p-3 font-mono text-sm focus:outline-none focus:shadow-retro"
+                          className="flex-1 bg-[var(--bg-card)] border-2 border-theme text-[var(--text-main)] p-3 font-mono text-sm focus:outline-none focus:shadow-retro"
                         />
                       ) : (
-                        <code className="flex-1 bg-gray-100 border-2 border-black p-3 font-mono text-sm truncate block">
+                        <code className="flex-1 bg-[var(--bg-hover)] border-2 border-theme text-[var(--text-main)] p-3 font-mono text-sm truncate block">
                             {redirectUri}
                         </code>
                       )}
                       
                       <button 
                         onClick={handleCopy}
-                        className={`p-3 border-2 border-black transition-all ${copied ? 'bg-green-500 text-white' : 'bg-white hover:bg-gray-100'}`}
+                        className={`p-3 border-2 border-theme transition-all ${copied ? 'bg-green-500 text-white' : 'bg-[var(--bg-card)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'}`}
                         title="Copy to Clipboard"
                       >
                          {copied ? <ICONS.Check size={20} /> : <ICONS.Copy size={20} />}
@@ -214,10 +313,6 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                          </p>
                       </div>
                    )}
-                   
-                   <p className="text-xs text-gray-500 font-bold font-mono">
-                      * Ensure NO trailing slash in the Dashboard.
-                   </p>
                 </div>
              </div>
 
@@ -225,8 +320,8 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
              <div className="flex flex-col md:flex-row gap-6">
                 <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-bold text-xl flex-shrink-0 shadow-retro-sm border-2 border-white outline outline-2 outline-black">2</div>
                 <div className="flex-1 space-y-3">
-                   <h4 className="font-bold text-lg">Enter Client ID</h4>
-                   <p className="text-sm text-gray-600">
+                   <h4 className="font-bold text-lg text-[var(--text-main)]">Enter Client ID</h4>
+                   <p className="text-sm text-[var(--text-muted)]">
                       Paste the <strong>Client ID</strong> from your Spotify App here.
                    </p>
                    <div className="relative">
@@ -238,7 +333,7 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                            setIsSaved(false);
                         }}
                         disabled={isConnecting}
-                        className="w-full bg-white border-2 border-black px-4 py-3 text-black focus:shadow-retro focus:outline-none transition-all font-mono placeholder-gray-400 disabled:bg-gray-100 disabled:text-gray-500"
+                        className="w-full bg-[var(--bg-card)] border-2 border-theme px-4 py-3 text-[var(--text-main)] focus:shadow-retro focus:outline-none transition-all font-mono placeholder-gray-400 disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="e.g. 8a93b2..."
                       />
                       {clientId.length > 25 && (
@@ -256,11 +351,11 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                 </div>
              </div>
 
-             <div className="pt-4 border-t-2 border-gray-200">
+             <div className="pt-4 border-t-2 border-theme">
                <button 
                  onClick={handleConnect}
                  disabled={!clientId || isConnecting}
-                 className={`w-full py-4 font-bold border-2 border-black shadow-retro transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none flex items-center justify-center space-x-2 font-mono uppercase text-lg relative overflow-hidden ${
+                 className={`w-full py-4 font-bold border-2 border-theme shadow-retro transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none flex items-center justify-center space-x-2 font-mono uppercase text-lg relative overflow-hidden ${
                    clientId && !isConnecting
                      ? 'bg-[#1DB954] text-black hover:bg-[#1ed760]' 
                      : (isConnecting ? 'bg-[#1ed760] text-black' : 'bg-gray-200 text-gray-500 cursor-not-allowed')
@@ -295,7 +390,7 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                
                {showManualCheck && (
                   <div className="mt-4 flex flex-col items-center space-y-3 animate-in fade-in">
-                      <p className="text-xs font-mono text-gray-600">Popup closed or blocked?</p>
+                      <p className="text-xs font-mono text-[var(--text-muted)]">Popup closed or blocked?</p>
                       <button 
                         onClick={checkConnection}
                         className="px-6 py-3 bg-black text-white font-bold font-mono text-sm animate-pulse border-2 border-transparent hover:border-black hover:bg-white hover:text-black shadow-retro-sm"
@@ -307,17 +402,17 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
              </div>
 
              {/* Manual Override Section */}
-             <div className="pt-8 border-t-2 border-gray-200">
+             <div className="pt-8 border-t-2 border-theme">
                 <button 
                   onClick={() => setShowManualEntry(!showManualEntry)}
-                  className="text-xs font-bold text-gray-400 hover:text-black font-mono underline uppercase"
+                  className="text-xs font-bold text-gray-400 hover:text-[var(--text-main)] font-mono underline uppercase"
                 >
                    {showManualEntry ? '- Hide Developer Override' : '+ Developer Override (Manual Token)'}
                 </button>
                 
                 {showManualEntry && (
-                   <div className="mt-4 bg-gray-50 border-2 border-dashed border-gray-300 p-4 space-y-3">
-                      <p className="text-xs text-gray-600 font-mono">
+                   <div className="mt-4 bg-[var(--bg-hover)] border-2 border-dashed border-gray-300 p-4 space-y-3">
+                      <p className="text-xs text-[var(--text-muted)] font-mono">
                          If the popup fails, you can generate a token externally and paste it here.
                       </p>
                       <div className="flex gap-2">
@@ -325,13 +420,13 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                            type="text" 
                            value={manualToken}
                            onChange={(e) => setManualToken(e.target.value)}
-                           className="flex-1 border-2 border-gray-300 p-2 text-xs font-mono focus:border-black focus:outline-none"
+                           className="flex-1 border-2 border-theme p-2 text-xs font-mono focus:border-[var(--primary)] focus:outline-none"
                            placeholder="Paste 'access_token' here..."
                          />
                          <button 
                            onClick={handleManualTokenSave}
                            disabled={!manualToken}
-                           className="bg-black text-white px-4 py-2 text-xs font-bold font-mono hover:bg-gray-800 disabled:opacity-50"
+                           className="bg-[var(--text-main)] text-[var(--bg-main)] px-4 py-2 text-xs font-bold font-mono hover:opacity-80 disabled:opacity-50"
                          >
                             SAVE_FORCE
                          </button>
@@ -339,27 +434,16 @@ const Settings: React.FC<SettingsProps> = ({ spotifyToken, spotifyProfile, onDis
                    </div>
                 )}
              </div>
-
-             {/* Troubleshooting Section */}
-             <div className="bg-gray-100 border-2 border-gray-300 p-4 text-xs font-mono text-gray-600 space-y-2">
-                <p className="font-bold text-gray-800">TROUBLESHOOTING:</p>
-                <ul className="list-disc pl-4 space-y-1">
-                   <li>If "Invalid Client: Insecure redirect URI" appears, click <strong>EDIT</strong> above and change 'http' to 'https'.</li>
-                   <li>Ensure <strong>Redirect URI</strong> in Spotify Dashboard matches the code above exactly.</li>
-                   <li>Check that you have added the User under "Users and Access" in Spotify Dashboard if your app is in <strong>Development Mode</strong>.</li>
-                   <li>Ensure no trailing slashes at the end of the Redirect URI in Spotify settings.</li>
-                </ul>
-             </div>
           </div>
         )}
       </div>
 
-      <div className="bg-white border-2 border-black p-8 shadow-retro opacity-75 hover:opacity-100 transition-opacity">
-         <h3 className="text-xl font-bold mb-4 font-mono uppercase">System Info</h3>
-         <p className="text-sm text-gray-600 mb-2 font-mono">GEMINI_API_KEY_STATUS</p>
+      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro opacity-75 hover:opacity-100 transition-opacity">
+         <h3 className="text-xl font-bold mb-4 font-mono uppercase text-[var(--text-main)]">System Info</h3>
+         <p className="text-sm text-[var(--text-muted)] mb-2 font-mono">GEMINI_API_KEY_STATUS</p>
          <div className="flex items-center space-x-2">
             <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <code className="text-sm font-mono font-bold">DETECTED_IN_ENV</code>
+            <code className="text-sm font-mono font-bold text-[var(--text-main)]">DETECTED_IN_ENV</code>
          </div>
       </div>
     </div>

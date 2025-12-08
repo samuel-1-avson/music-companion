@@ -7,10 +7,72 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+      :root {
+        /* CLASSIC THEME (Default) */
+        --bg-main: #fcfbf9;
+        --bg-card: #ffffff;
+        --bg-hover: #f3f4f6;
+        --text-main: #1a1a1a;
+        --text-muted: #4b5563;
+        --primary: #fb923c; /* orange-400 */
+        --primary-hover: #f97316; /* orange-500 */
+        --border: #000000;
+        --shadow: #000000;
+      }
+      
+      body[data-theme='cyber'] {
+        --bg-main: #09090b;
+        --bg-card: #18181b;
+        --bg-hover: #27272a;
+        --text-main: #f4f4f5;
+        --text-muted: #a1a1aa;
+        --primary: #22d3ee; /* cyan-400 */
+        --primary-hover: #06b6d4;
+        --border: #22d3ee;
+        --shadow: #22d3ee;
+      }
+
+      body[data-theme='forest'] {
+        --bg-main: #f0fdf4;
+        --bg-card: #ffffff;
+        --bg-hover: #dcfce7;
+        --text-main: #14532d;
+        --text-muted: #15803d;
+        --primary: #4ade80; /* green-400 */
+        --primary-hover: #22c55e;
+        --border: #14532d;
+        --shadow: #14532d;
+      }
+
+      body[data-theme='lavender'] {
+        --bg-main: #faf5ff;
+        --bg-card: #ffffff;
+        --bg-hover: #f3e8ff;
+        --text-main: #3b0764;
+        --text-muted: #6b21a8;
+        --primary: #d8b4fe; /* purple-300 */
+        --primary-hover: #c084fc;
+        --border: #3b0764;
+        --shadow: #3b0764;
+      }
+
+      body[data-theme='minimal'] {
+        --bg-main: #ffffff;
+        --bg-card: #ffffff;
+        --bg-hover: #f4f4f5; /* zinc-100 */
+        --text-main: #18181b; /* zinc-900 */
+        --text-muted: #71717a; /* zinc-500 */
+        --primary: #18181b; /* Black */
+        --primary-hover: #3f3f46;
+        --border: #e4e4e7; /* zinc-200 */
+        --shadow: transparent;
+      }
+
       body { 
         font-family: 'Inter', sans-serif; 
-        background-color: #fcfbf9;
-        color: #1a1a1a;
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
       h1, h2, h3, h4, h5, h6, .font-mono {
         font-family: 'IBM Plex Mono', monospace;
@@ -19,34 +81,56 @@
       /* Retro Scrollbar */
       ::-webkit-scrollbar { width: 12px; }
       ::-webkit-scrollbar-track { 
-        background: #fcfbf9; 
-        border-left: 2px solid #000; 
+        background: var(--bg-main); 
+        border-left: 2px solid var(--border); 
       }
       ::-webkit-scrollbar-thumb { 
-        background: #000; 
-        border: 2px solid #fcfbf9;
+        background: var(--border); 
+        border: 2px solid var(--bg-main);
         border-radius: 0; 
       }
       ::-webkit-scrollbar-thumb:hover { background: #333; }
 
-      /* Utility for hard shadows */
+      /* Utility for hard shadows with variables */
       .shadow-retro {
-        box-shadow: 4px 4px 0px 0px #000;
+        box-shadow: 4px 4px 0px 0px var(--shadow);
       }
       .shadow-retro-sm {
-        box-shadow: 2px 2px 0px 0px #000;
+        box-shadow: 2px 2px 0px 0px var(--shadow);
       }
       .shadow-retro-lg {
-        box-shadow: 6px 6px 0px 0px #000;
+        box-shadow: 6px 6px 0px 0px var(--shadow);
       }
       .hover\:shadow-retro-hover:hover {
         transform: translate(2px, 2px);
-        box-shadow: 2px 2px 0px 0px #000;
+        box-shadow: 2px 2px 0px 0px var(--shadow);
       }
       .active\:shadow-retro-active:active {
         transform: translate(4px, 4px);
-        box-shadow: 0px 0px 0px 0px #000;
+        box-shadow: 0px 0px 0px 0px var(--shadow);
       }
+      
+      /* Dynamic Border Utility */
+      .border-theme {
+        border-color: var(--border);
+      }
+
+      /* Minimal Theme Overrides */
+      body[data-theme='minimal'] .shadow-retro,
+      body[data-theme='minimal'] .shadow-retro-sm,
+      body[data-theme='minimal'] .shadow-retro-lg {
+        box-shadow: none; /* No shadow */
+      }
+      
+      /* Force 1px border for minimal theme instead of 2px */
+      body[data-theme='minimal'] .border-2 {
+        border-width: 1px !important;
+      }
+      
+      /* Specific Minimal Scrollbar */
+      body[data-theme='minimal'] ::-webkit-scrollbar { width: 6px; }
+      body[data-theme='minimal'] ::-webkit-scrollbar-track { border: none; background: transparent; }
+      body[data-theme='minimal'] ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; border: none; }
     </style>
   <script type="importmap">
 {
@@ -61,7 +145,7 @@
 }
 </script>
 </head>
-  <body class="bg-[#fcfbf9] text-gray-900 overflow-hidden">
+  <body class="bg-[var(--bg-main)] text-[var(--text-main)] overflow-hidden">
     <div id="root"></div>
   </body>
 </html>

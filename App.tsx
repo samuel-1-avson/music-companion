@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import MusicPlayer from './components/MusicPlayer';
 import Dashboard from './components/Dashboard';
@@ -6,12 +6,22 @@ import ChatInterface from './components/ChatInterface';
 import LiveInterface from './components/LiveInterface';
 import Settings from './components/Settings';
 import FocusMode from './components/FocusMode';
-import { AppView, Song, MoodData, SpotifyProfile } from './types';
+import Extensions from './components/Extensions';
+import TheLab from './components/TheLab';
+import IntroPage from './components/IntroPage';
+import Arcade from './components/Arcade';
+import OfflineLibrary from './components/OfflineLibrary';
+import { AppView, Song, MoodData, SpotifyProfile, Theme, MusicProvider } from './types';
 import { MOCK_SONGS, ICONS } from './constants';
 import { parseSpotifyToken, parseSpotifyError, getUserProfile } from './services/spotifyService';
 import { recommendNextSong, generateDJTransition } from './services/geminiService';
+import { useWakeWord } from './hooks/useWakeWord';
+import { getYouTubeAudioStream } from './services/musicService';
 
 const App: React.FC = () => {
+  const [introCompleted, setIntroCompleted] = useState(false);
+  const [userName, setUserName] = useState('');
+  
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentSong, setCurrentSong] = useState<Song | null>(MOCK_SONGS[0]);
   const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
@@ -19,6 +29,12 @@ const App: React.FC = () => {
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
+  // Theme State
+  const [theme, setTheme] = useState<Theme>('minimal');
+  
+  // Provider State
+  const [musicProvider, setMusicProvider] = useState<MusicProvider>('YOUTUBE');
+
   // Radio Mode
   const [isRadioMode, setIsRadioMode] = useState(false);
   const [isDJSpeaking, setIsDJSpeaking] = useState(false);
@@ -31,10 +47,83 @@ const App: React.FC = () => {
   // Auto-DJ State
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
 
+  // Music Visualization State
+  const [musicAnalyser, setMusicAnalyser] = useState<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  // Apply Theme
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  // Wake Word Handler
+  const handleWakeWordDetected = useCallback(() => {
+    // Play a "Listening" Chime
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(500, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.1);
+    
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + 0.5);
+
+    // Switch to Live Mode
+    setCurrentView(AppView.LIVE);
+  }, []);
+
+  // Use Wake Word Hook - Only active when NOT in Live mode or Focus Mode
+  // We disable it in Live mode because Live mode claims the microphone for Gemini
+  const { isListening: isWakeWordListening } = useWakeWord(
+      handleWakeWordDetected, 
+      introCompleted && currentView !== AppView.LIVE && currentView !== AppView.FOCUS
+  );
+
+  const handleAudioElement = useCallback((audioElement: HTMLAudioElement) => {
+    if (musicSourceRef.current?.mediaElement === audioElement) return;
+
+    try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!audioContextRef.current) {
+            audioContextRef.current = new AudioContextClass();
+        }
+        const ctx = audioContextRef.current;
+
+        // Resume context on user interaction if suspended
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128; // Use 128 for chunky bars
+        
+        const source = ctx.createMediaElementSource(audioElement);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        
+        musicSourceRef.current = source;
+        setMusicAnalyser(analyser);
+    } catch (e) {
+        console.warn("Web Audio API setup failed (possibly CORS)", e);
+    }
+  }, []);
+
   useEffect(() => {
     // Check for hash in URL (callback from Spotify)
     const hash = window.location.hash;
     if (hash) {
+      // If returning from Spotify auth, skip intro
+      setIntroCompleted(true);
+      
       const token = parseSpotifyToken(hash);
       const error = parseSpotifyError(hash);
       
@@ -74,9 +163,12 @@ const App: React.FC = () => {
     if (spotifyToken) {
       getUserProfile(spotifyToken).then(profile => {
         setSpotifyProfile(profile);
+        // Auto-switch to Spotify provider if connected
+        setMusicProvider('SPOTIFY');
       });
     } else {
       setSpotifyProfile(null);
+      if (musicProvider === 'SPOTIFY') setMusicProvider('YOUTUBE');
     }
   }, [spotifyToken]);
 
@@ -108,15 +200,66 @@ const App: React.FC = () => {
       });
   };
 
-  const playSong = (song: Song, contextQueue?: Song[]) => {
-    setCurrentSong(song);
-    updateMoodHistory(song);
+  const playSong = async (song: Song, contextQueue?: Song[]) => {
+    // If it's a YouTube track but hasn't resolved a stream URL yet
+    let trackToPlay = song;
+    
+    if (song.spotifyUri?.startsWith('yt:') && !song.previewUrl) {
+        // Extract ID from URI "yt:VIDEO_ID"
+        const videoId = song.spotifyUri.split(':')[1];
+        if (videoId) {
+            try {
+                // Fetch real stream
+                const streamUrl = await getYouTubeAudioStream(videoId);
+                if (streamUrl) {
+                    trackToPlay = { ...song, previewUrl: streamUrl };
+                } else {
+                    setErrorMessage("Could not resolve audio stream for this track.");
+                    return; // Abort
+                }
+            } catch(e) {
+                setErrorMessage("Network error resolving audio.");
+                return;
+            }
+        }
+    }
+    
+    // Ensure blob URL is generated if missing for offline files
+    if (song.fileBlob && !song.previewUrl) {
+       trackToPlay = { ...song, previewUrl: URL.createObjectURL(song.fileBlob) };
+    }
+
+    // Try to resume audio context if it was suspended
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+       audioContextRef.current.resume();
+    }
+
+    setCurrentSong(trackToPlay);
+    updateMoodHistory(trackToPlay);
     
     if (contextQueue) {
       setQueue(contextQueue);
-    } else if (!queue.find(s => s.id === song.id)) {
-      setQueue([song]);
+    } else if (!queue.find(s => s.id === trackToPlay.id)) {
+      setQueue(prev => [...prev, trackToPlay]);
     }
+  };
+
+  const handleReorderQueue = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= queue.length) return;
+    setQueue(prev => {
+        const newQueue = [...prev];
+        const [moved] = newQueue.splice(fromIndex, 1);
+        newQueue.splice(toIndex, 0, moved);
+        return newQueue;
+    });
+  };
+
+  const handleRemoveFromQueue = (index: number) => {
+      setQueue(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddToQueue = (song: Song) => {
+      setQueue(prev => [...prev, song]);
   };
 
   const speakDJIntro = (text: string, onEnd: () => void) => {
@@ -174,20 +317,16 @@ const App: React.FC = () => {
        // Radio Mode Logic
        if (isRadioMode && currentSong) {
            // Generate script
-           // Note: We use a simple non-blocking placeholder if intro generation is slow? 
-           // Better to wait a bit for the effect.
            const script = await generateDJTransition(currentSong, nextSong);
            if (script) {
                speakDJIntro(script, () => {
-                   setCurrentSong(nextSong);
-                   updateMoodHistory(nextSong!);
+                   playSong(nextSong!);
                });
                return; // Return early, playSong happens in callback
            }
        }
        
-       setCurrentSong(nextSong);
-       updateMoodHistory(nextSong);
+       playSong(nextSong);
     }
   };
 
@@ -196,11 +335,9 @@ const App: React.FC = () => {
     const idx = queue.findIndex(s => s.id === currentSong.id);
     if (idx > 0) {
       const prevSong = queue[idx - 1];
-      setCurrentSong(prevSong);
-      updateMoodHistory(prevSong);
+      playSong(prevSong);
     } else {
-      setCurrentSong(queue[queue.length - 1]);
-      updateMoodHistory(queue[queue.length - 1]);
+      playSong(queue[queue.length - 1]);
     }
   };
 
@@ -219,28 +356,89 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case AppView.DASHBOARD:
-        return <Dashboard onPlaySong={playSong} onChangeView={setCurrentView} spotifyToken={spotifyToken} moodData={moodData} />;
+        return (
+            <Dashboard 
+                onPlaySong={playSong} 
+                onChangeView={setCurrentView} 
+                spotifyToken={spotifyToken} 
+                moodData={moodData}
+                musicProvider={musicProvider}
+            />
+        );
       case AppView.CHAT:
-        return <ChatInterface onPlaySong={playSong} spotifyToken={spotifyToken} />;
+        return (
+            <ChatInterface 
+                onPlaySong={playSong} 
+                spotifyToken={spotifyToken} 
+                musicProvider={musicProvider}
+            />
+        );
       case AppView.LIVE:
-        return <LiveInterface currentSong={currentSong} />;
+        return (
+            <LiveInterface 
+                currentSong={currentSong} 
+                musicAnalyser={musicAnalyser} 
+                onPlaySong={playSong} 
+                spotifyToken={spotifyToken} 
+                musicProvider={musicProvider}
+            />
+        );
+      case AppView.ARCADE:
+        return <Arcade />;
+      case AppView.OFFLINE:
+        return <OfflineLibrary onPlaySong={playSong} />;
+      case AppView.LAB:
+        return <TheLab />;
+      case AppView.EXTENSIONS:
+        return (
+            <Extensions 
+                onPlaySong={playSong} 
+                spotifyToken={spotifyToken} 
+                musicProvider={musicProvider}
+            />
+        );
       case AppView.SETTINGS:
         return (
            <Settings 
              spotifyToken={spotifyToken} 
              spotifyProfile={spotifyProfile}
-             onDisconnect={handleDisconnectSpotify} 
+             onDisconnect={handleDisconnectSpotify}
+             currentTheme={theme}
+             onSetTheme={setTheme}
+             musicProvider={musicProvider}
+             onSetMusicProvider={setMusicProvider}
            />
         );
       default:
-        return <Dashboard onPlaySong={playSong} onChangeView={setCurrentView} spotifyToken={spotifyToken} moodData={moodData} />;
+        return (
+            <Dashboard 
+                onPlaySong={playSong} 
+                onChangeView={setCurrentView} 
+                spotifyToken={spotifyToken} 
+                moodData={moodData}
+                musicProvider={musicProvider}
+            />
+        );
     }
   };
+  
+  // Show Intro Page if not completed
+  if (!introCompleted) {
+    return <IntroPage onComplete={(name) => {
+      setUserName(name);
+      setIntroCompleted(true);
+    }} />;
+  }
 
   return (
-    <div className="flex h-screen w-full bg-[#fcfbf9] text-gray-900 font-sans selection:bg-orange-400 selection:text-black">
+    <div className="flex h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--primary)] selection:text-white transition-colors duration-300">
       {currentView !== AppView.FOCUS && (
-          <Sidebar currentView={currentView} onChangeView={setCurrentView} spotifyProfile={spotifyProfile} />
+          <Sidebar 
+            currentView={currentView} 
+            onChangeView={setCurrentView} 
+            spotifyProfile={spotifyProfile}
+            isListeningForWakeWord={isWakeWordListening}
+          />
       )}
       
       <main className={`relative h-full overflow-hidden flex flex-col ${currentView === AppView.FOCUS ? 'w-full' : 'flex-1 ml-64'}`}>
@@ -257,10 +455,10 @@ const App: React.FC = () => {
         
         {/* DJ / Auto-DJ Loading Indicator */}
         {(isAutoDJLoading || isDJSpeaking) && (
-           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-black text-white px-6 py-3 shadow-retro flex items-center space-x-3 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-[var(--text-main)] text-[var(--bg-main)] px-6 py-3 shadow-retro flex items-center space-x-3 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
               <div className="relative">
-                 <ICONS.Loader className="animate-spin text-orange-500" />
-                 {isDJSpeaking && <span className="absolute inset-0 bg-orange-500 rounded-full animate-ping opacity-20"></span>}
+                 <ICONS.Loader className="animate-spin text-[var(--primary)]" />
+                 {isDJSpeaking && <span className="absolute inset-0 bg-[var(--primary)] rounded-full animate-ping opacity-20"></span>}
               </div>
               <div className="flex flex-col">
                  <span className="font-bold font-mono text-sm uppercase tracking-wider">
@@ -279,12 +477,18 @@ const App: React.FC = () => {
       {currentView !== AppView.FOCUS && (
           <MusicPlayer 
             currentSong={currentSong} 
+            queue={queue}
             onNext={handleNext}
             onPrev={handlePrev}
             hasNext={true} 
             hasPrev={queue.length > 1}
             isRadioMode={isRadioMode}
             toggleRadioMode={() => setIsRadioMode(!isRadioMode)}
+            onAudioElement={handleAudioElement}
+            onPlaySong={playSong}
+            onReorderQueue={handleReorderQueue}
+            onRemoveFromQueue={handleRemoveFromQueue}
+            onAddToQueue={handleAddToQueue}
           />
       )}
     </div>
