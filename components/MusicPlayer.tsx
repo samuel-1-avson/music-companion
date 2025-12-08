@@ -2,15 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ICONS } from '../constants';
 import { Song } from '../types';
 import { getSongLyrics, analyzeSongMeaning } from '../services/geminiService';
+import QueuePanel from './QueuePanel';
 
 interface MusicPlayerProps {
   currentSong: Song | null;
+  queue?: Song[]; // New prop
   onNext?: () => void;
   onPrev?: () => void;
   hasNext?: boolean;
   hasPrev?: boolean;
   isRadioMode: boolean;
   toggleRadioMode: () => void;
+  onAudioElement?: (element: HTMLAudioElement) => void;
+  onPlaySong?: (song: Song) => void; // Used for jumping in queue
+  // Queue Management Props
+  onReorderQueue?: (from: number, to: number) => void;
+  onRemoveFromQueue?: (index: number) => void;
+  onAddToQueue?: (song: Song) => void;
 }
 
 interface LyricLine {
@@ -18,7 +26,21 @@ interface LyricLine {
   text: string;
 }
 
-const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, hasNext, hasPrev, isRadioMode, toggleRadioMode }) => {
+const MusicPlayer: React.FC<MusicPlayerProps> = ({ 
+  currentSong, 
+  queue,
+  onNext, 
+  onPrev, 
+  hasNext, 
+  hasPrev, 
+  isRadioMode, 
+  toggleRadioMode,
+  onAudioElement,
+  onPlaySong,
+  onReorderQueue,
+  onRemoveFromQueue,
+  onAddToQueue
+}) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(0.75); // 75% default
@@ -33,10 +55,21 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
   const [loadingLyrics, setLoadingLyrics] = useState(false);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+  const lyricsListRef = useRef<HTMLDivElement>(null);
   
   // Analysis State
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // Queue State
+  const [showQueue, setShowQueue] = useState(false);
+
+  // Expose audio ref to parent for visualization
+  useEffect(() => {
+    if (audioRef.current && onAudioElement) {
+      onAudioElement(audioRef.current);
+    }
+  }, [onAudioElement]);
 
   // Handle song change
   useEffect(() => {
@@ -86,8 +119,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
     if (newIndex !== activeLineIndex) {
       setActiveLineIndex(newIndex);
       // Scroll into view
-      if (lyricsContainerRef.current && newIndex !== -1) {
-        const lineElement = lyricsContainerRef.current.children[newIndex] as HTMLElement;
+      if (lyricsListRef.current && newIndex !== -1) {
+        const lineElement = lyricsListRef.current.children[newIndex] as HTMLElement;
         if (lineElement) {
           lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -148,9 +181,16 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
   const toggleLyrics = () => {
     const newState = !showLyrics;
     setShowLyrics(newState);
+    if (showQueue) setShowQueue(false); // Close queue if lyrics opening
     if (newState && !lyrics && currentSong) {
       fetchLyrics(currentSong);
     }
+  };
+
+  const toggleQueue = () => {
+    const newState = !showQueue;
+    setShowQueue(newState);
+    if (showLyrics) setShowLyrics(false); // Close lyrics if queue opening
   };
 
   // Handle Play/Pause
@@ -192,52 +232,61 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
     }
   };
   
-  // Expose toggle play for parent
-  // Note: Parent controls song, but player controls play state. 
-  // We can assume parent doesn't need to force play unless changing song.
-
   if (!currentSong) return null;
 
   return (
     <>
+      {/* Queue Panel */}
+      {showQueue && queue && (
+          <QueuePanel 
+            queue={queue}
+            currentSong={currentSong}
+            onClose={() => setShowQueue(false)}
+            onRemove={onRemoveFromQueue || (() => {})}
+            onReorder={onReorderQueue || (() => {})}
+            onAdd={onAddToQueue || (() => {})}
+            onPlay={onPlaySong || (() => {})}
+          />
+      )}
+
       {/* Lyrics Panel - Popover above player */}
       {showLyrics && (
-        <div className="fixed bottom-24 right-4 md:right-8 w-80 md:w-96 max-h-[60vh] h-[500px] bg-white border-2 border-black shadow-retro z-50 flex flex-col animate-in slide-in-from-bottom-4 duration-300">
-          <div className="p-3 border-b-2 border-black flex justify-between items-center bg-orange-100 flex-shrink-0">
-            <h3 className="font-mono font-bold text-sm uppercase flex items-center gap-2">
+        <div className="fixed bottom-24 right-4 md:right-8 w-80 md:w-96 max-h-[60vh] h-[500px] bg-[var(--bg-card)] border-2 border-theme shadow-retro z-50 flex flex-col animate-in slide-in-from-bottom-4 duration-300">
+          <div className="p-3 border-b-2 border-theme flex justify-between items-center bg-[var(--bg-hover)] flex-shrink-0">
+            <h3 className="font-mono font-bold text-sm uppercase flex items-center gap-2 text-[var(--text-main)]">
               <ICONS.Lyrics size={16} /> 
               Lyrics_Module
             </h3>
-            <button onClick={() => setShowLyrics(false)} className="hover:bg-red-500 hover:text-white border-2 border-transparent hover:border-black transition-colors p-1">
+            <button onClick={() => setShowLyrics(false)} className="hover:bg-red-500 hover:text-white border-2 border-transparent hover:border-black transition-colors p-1 text-[var(--text-main)]">
               <ICONS.Close size={16} />
             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed bg-[#fcfbf9] relative scroll-smooth p-4" ref={lyricsContainerRef}>
+          <div className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed bg-[var(--bg-main)] relative scroll-smooth p-4" ref={lyricsContainerRef}>
             {loadingLyrics ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-2 opacity-50 absolute inset-0">
+              <div className="flex flex-col items-center justify-center h-full space-y-2 opacity-50 absolute inset-0 text-[var(--text-muted)]">
                 <ICONS.Loader className="animate-spin" size={24} />
                 <span>ACCESSING_DATABASE...</span>
               </div>
             ) : analysis ? (
                 <div className="space-y-4">
-                    <div className="bg-orange-50 border-2 border-orange-200 p-4">
-                        <h4 className="font-bold text-orange-600 mb-2 uppercase flex items-center gap-2">
+                    <div className="bg-[var(--bg-card)] border-2 border-[var(--primary)] p-4">
+                        <h4 className="font-bold text-[var(--primary)] mb-2 uppercase flex items-center gap-2">
                            <ICONS.Search size={14} /> Meaning Analysis
                         </h4>
-                        <p className="text-gray-800 leading-relaxed font-sans">{analysis}</p>
+                        <p className="text-[var(--text-main)] leading-relaxed font-sans">{analysis}</p>
                     </div>
-                    <button onClick={() => setAnalysis(null)} className="text-xs underline text-gray-500">Back to Lyrics</button>
+                    <button onClick={() => setAnalysis(null)} className="text-xs underline text-[var(--text-muted)]">Back to Lyrics</button>
                 </div>
             ) : parsedLyrics ? (
-               <div className="space-y-4 pt-[40%] pb-[40%]">
+               <div className="space-y-4 pt-[40%] pb-[40%]" ref={lyricsListRef}>
                  {parsedLyrics.map((line, idx) => (
                     <p 
                       key={idx} 
                       className={`transition-all duration-300 ${
                         idx === activeLineIndex 
-                          ? 'text-black font-bold text-sm scale-105 origin-left' 
-                          : 'text-gray-400 text-xs blur-[0.5px]'
+                          ? 'text-[var(--text-main)] font-bold text-sm scale-105 origin-left' 
+                          : 'text-[var(--text-muted)] text-xs blur-[0.5px]'
                       }`}
                     >
                       {line.text}
@@ -245,7 +294,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
                  ))}
                </div>
             ) : (
-              <div className="whitespace-pre-wrap">
+              <div className="whitespace-pre-wrap text-[var(--text-main)]">
                 {lyrics || "No lyrics available."}
               </div>
             )}
@@ -253,11 +302,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
           
           {/* Footer Actions for Lyrics */}
           {!loadingLyrics && lyrics && !analysis && (
-             <div className="p-3 border-t-2 border-black bg-gray-50 flex justify-center">
+             <div className="p-3 border-t-2 border-theme bg-[var(--bg-card)] flex justify-center">
                 <button 
                   onClick={handleAnalyze}
                   disabled={loadingAnalysis}
-                  className="flex items-center gap-2 bg-black text-white px-4 py-2 text-xs font-bold font-mono hover:bg-orange-500 transition-colors"
+                  className="flex items-center gap-2 bg-black text-white px-4 py-2 text-xs font-bold font-mono hover:bg-[var(--primary)] hover:text-black transition-colors"
                 >
                    {loadingAnalysis ? <ICONS.Loader className="animate-spin" size={12} /> : <ICONS.Search size={12} />}
                    DEEP_DECODE
@@ -267,20 +316,21 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-black p-0 z-50 shadow-[0_-4px_0_0_rgba(0,0,0,0.05)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t-2 border-theme p-0 z-50 shadow-[0_-4px_0_0_rgba(0,0,0,0.05)]">
         {currentSong.previewUrl && (
           <audio 
             ref={audioRef}
             src={currentSong.previewUrl}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
+            crossOrigin="anonymous" // Critical for Web Audio API visualization
           />
         )}
         
         {/* Progress Bar Top */}
-        <div className="w-full h-1 bg-gray-200 cursor-pointer group relative border-b border-black">
+        <div className="w-full h-1 bg-gray-200 cursor-pointer group relative border-b border-theme">
           <div 
-            className="h-full bg-orange-500 transition-all duration-100 ease-linear relative" 
+            className="h-full bg-[var(--primary)] transition-all duration-100 ease-linear relative" 
             style={{ width: `${progress}%` }}
           >
             <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-black border border-white opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -299,8 +349,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
               />
             </div>
             <div className="overflow-hidden">
-              <h4 className="text-black font-bold font-mono text-sm truncate uppercase">{currentSong.title}</h4>
-              <p className="text-gray-600 text-xs font-bold truncate">{currentSong.artist}</p>
+              <h4 className="text-[var(--text-main)] font-bold font-mono text-sm truncate uppercase">{currentSong.title}</h4>
+              <p className="text-[var(--text-muted)] text-xs font-bold truncate">{currentSong.artist}</p>
             </div>
           </div>
 
@@ -308,7 +358,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
           <div className="flex flex-col items-center justify-center w-2/4">
             <div className="flex items-center space-x-6">
               <button 
-                className={`text-black hover:text-orange-600 transition active:scale-95 ${!hasPrev && 'opacity-30 cursor-not-allowed'}`} 
+                className={`text-[var(--text-main)] hover:text-[var(--primary)] transition active:scale-95 ${!hasPrev && 'opacity-30 cursor-not-allowed'}`} 
                 title="Previous"
                 onClick={onPrev}
                 disabled={!hasPrev}
@@ -321,7 +371,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     : isPlaying 
                       ? 'bg-black text-white hover:bg-gray-800' 
-                      : 'bg-orange-400 text-black hover:bg-orange-300'
+                      : 'bg-[var(--primary)] text-black hover:bg-[var(--primary-hover)]'
                 }`}
                 onClick={() => currentSong.previewUrl && setIsPlaying(!isPlaying)}
                 disabled={!currentSong.previewUrl}
@@ -335,7 +385,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
                 )}
               </button>
               <button 
-                className={`text-black hover:text-orange-600 transition active:scale-95 ${!hasNext && 'opacity-30 cursor-not-allowed'}`}
+                className={`text-[var(--text-main)] hover:text-[var(--primary)] transition active:scale-95 ${!hasNext && 'opacity-30 cursor-not-allowed'}`}
                 title="Next"
                 onClick={onNext}
                 disabled={!hasNext}
@@ -350,15 +400,24 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
              {/* Radio Mode Toggle */}
              <button
                onClick={toggleRadioMode}
-               className={`flex items-center gap-1 text-[10px] font-mono font-bold border border-black px-2 py-1 transition-all ${isRadioMode ? 'bg-black text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}
+               className={`flex items-center gap-1 text-[10px] font-mono font-bold border border-theme px-2 py-1 transition-all ${isRadioMode ? 'bg-black text-white' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}`}
                title="AI DJ Mode"
              >
                 <ICONS.Mic size={12} />
                 {isRadioMode ? 'ON AIR' : 'RADIO'}
              </button>
 
+             {/* Queue Toggle */}
+             <button
+               onClick={toggleQueue}
+               className={`transition ${showQueue ? 'text-[var(--primary)]' : 'text-[var(--text-main)] hover:text-[var(--primary)]'}`}
+               title="Queue"
+             >
+                <ICONS.ListMusic size={20} strokeWidth={2.5} />
+             </button>
+
              {currentSong.externalUrl && (
-               <a href={currentSong.externalUrl} target="_blank" rel="noopener noreferrer" className="text-black hover:text-green-600" title="Open in Spotify">
+               <a href={currentSong.externalUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--text-main)] hover:text-green-600" title="Open in Spotify">
                  <ICONS.Music size={20} strokeWidth={2.5} />
                </a>
              )}
@@ -366,24 +425,24 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentSong, onNext, onPrev, 
              {/* Lyrics Toggle */}
              <button 
                onClick={toggleLyrics}
-               className={`transition ${showLyrics ? 'text-orange-600' : 'text-black hover:text-orange-600'}`}
+               className={`transition ${showLyrics ? 'text-[var(--primary)]' : 'text-[var(--text-main)] hover:text-[var(--primary)]'}`}
                title="Show Lyrics"
              >
                 <ICONS.Lyrics size={20} strokeWidth={2.5} />
              </button>
 
              <button 
-               className={`transition ${isLiked ? 'text-red-600 fill-current' : 'text-black hover:text-red-500'}`} 
+               className={`transition ${isLiked ? 'text-red-600 fill-current' : 'text-[var(--text-main)] hover:text-red-500'}`} 
                title="Save to Liked"
                onClick={() => setIsLiked(!isLiked)}
              >
                 <ICONS.Heart size={20} strokeWidth={2.5} fill={isLiked ? "currentColor" : "none"} />
              </button>
              
-             <div className="flex items-center space-x-2 border-2 border-black px-2 py-1 bg-gray-50">
-               <ICONS.Volume2 size={16} className="text-black" />
+             <div className="hidden md:flex items-center space-x-2 border-2 border-theme px-2 py-1 bg-[var(--bg-hover)]">
+               <ICONS.Volume2 size={16} className="text-[var(--text-main)]" />
                <div 
-                 className="w-16 h-2 bg-gray-300 border border-black relative cursor-pointer"
+                 className="w-16 h-2 bg-gray-300 border border-theme relative cursor-pointer"
                  ref={volumeRef}
                  onClick={handleVolumeClick}
                >

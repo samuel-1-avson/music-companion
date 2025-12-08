@@ -1,18 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality, Tool } from '@google/genai';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
 
 interface UseLiveSessionProps {
   onTranscript?: (text: string, isUser: boolean) => void;
+  systemInstruction?: string;
+  tools?: Tool[];
+  onToolCall?: (functionCalls: any[]) => void;
 }
 
-export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
+export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolCall }: UseLiveSessionProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false); 
   const [volume, setVolume] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const isMutedRef = useRef(false);
+
+  // Connection State Ref (to avoid stale closures in callbacks)
+  const isConnectedRef = useRef(false);
+  // Callback Refs
+  const onTranscriptRef = useRef(onTranscript);
+  const onToolCallRef = useRef(onToolCall);
 
   // Audio Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -35,6 +44,11 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
 
   const animationFrameRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+    onToolCallRef.current = onToolCall;
+  }, [onTranscript, onToolCall]);
+
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
         const next = !prev;
@@ -43,8 +57,14 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     });
   }, []);
 
+  const sendToolResponse = useCallback((functionResponses: any) => {
+     if (sessionRef.current) {
+        sessionRef.current.sendToolResponse({ functionResponses });
+     }
+  }, []);
+
   const analyzeAudio = () => {
-    if (!analyserRef.current || !isConnected) return;
+    if (!analyserRef.current || !isConnectedRef.current) return;
 
     const bufferLength = analyserRef.current.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
@@ -86,15 +106,30 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     if (videoStreamRef.current) stopVideo();
 
     try {
+      if (!navigator.mediaDevices) {
+          throw new Error("Media devices not supported (requires HTTPS).");
+      }
+
       let stream: MediaStream;
       if (mode === 'camera') {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        // Use 'ideal' constraints to prevent OverconstrainedError
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 } 
+            } 
+        });
       } else {
         // Check if getDisplayMedia is supported
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        if (!navigator.mediaDevices.getDisplayMedia) {
            throw new Error("Screen sharing is not supported on this device/browser.");
         }
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
+        stream = await navigator.mediaDevices.getDisplayMedia({ 
+            video: { 
+                width: { ideal: 1280 }, 
+                height: { ideal: 720 } 
+            } 
+        });
       }
       
       videoStreamRef.current = stream;
@@ -134,7 +169,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
              const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
              
              sessionPromise.then(session => {
-                if (session) {
+                if (session && isConnectedRef.current) {
                     try {
                         session.sendRealtimeInput({
                             media: {
@@ -143,7 +178,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
                             }
                         });
                     } catch(e) {
-                        // Ignore send errors (e.g. if session closed mid-frame)
+                        // Ignore send errors
                     }
                 }
              });
@@ -159,10 +194,10 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
       }
 
     } catch (e: any) {
-      console.error("Video start error", e);
+      console.warn("Video start error:", e);
       // Detailed error handling for permissions
-      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-         setError(`${mode === 'camera' ? 'Camera' : 'Screen share'} access denied.`);
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.message?.includes('Permission denied')) {
+         setError(`${mode === 'camera' ? 'Camera' : 'Screen share'} access denied. Please check your browser settings.`);
       } else if (e.name === 'NotFoundError') {
          setError(`No ${mode} device found.`);
       } else if (e.name === 'NotReadableError') {
@@ -175,6 +210,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
   }, [stopVideo]);
 
   const disconnect = useCallback(() => {
+    isConnectedRef.current = false;
     stopVideo();
 
     if (streamRef.current) {
@@ -229,6 +265,10 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     disconnect();
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+         throw new Error("Media API not available. Ensure you are using HTTPS.");
+      }
+
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioContextClass({ sampleRate: 24000 });
       audioContextRef.current = audioCtx;
@@ -243,12 +283,22 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
       // Get user media BEFORE connecting to ensure permissions
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+      } catch (mediaErr: any) {
+        if (mediaErr.name === 'NotAllowedError' || mediaErr.name === 'PermissionDeniedError' || mediaErr.message?.includes('Permission denied')) {
+            throw new Error("Microphone access denied. Please allow microphone permissions in your browser URL bar.");
+        }
+        throw mediaErr;
+      }
       
       // Ensure contexts are running (mobile/safari fix)
       if (audioCtx.state === 'suspended') await audioCtx.resume();
       if (inputCtx.state === 'suspended') await inputCtx.resume();
+
+      const defaultSystemInstruction = "You are a warm, knowledgeable, and cool Music Companion. You act like a late-night radio host or a close friend hanging out in the studio. You have eyes and can see the user's screen or face if they share it. Comment on what you see (visual context, work, facial expressions) and suggest music that matches the vibe. If the user asks to download music, call the download tool.";
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -256,6 +306,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
           onopen: () => {
             console.log("Live session opened");
             setIsConnected(true);
+            isConnectedRef.current = true;
             setError(null);
             
             analyzeAudio();
@@ -268,14 +319,14 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
 
             processor.onaudioprocess = (e) => {
               if (!inputContextRef.current) return;
-              if (isMutedRef.current) return; // Mute Check
+              if (isMutedRef.current) return; 
               
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createPcmBlob(inputData);
               
               // Use sessionPromise to ensure we wait for initialization
               sessionPromise.then(session => {
-                if (session && isConnected) { // Check isConnected to prevent sending after disconnect
+                if (session && isConnectedRef.current) {
                     try {
                         session.sendRealtimeInput({ media: pcmBlob });
                     } catch(err) {
@@ -291,11 +342,16 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
             processor.connect(inputContextRef.current.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
+             // Handle Tool Calls
+             if (msg.toolCall) {
+                onToolCallRef.current?.(msg.toolCall.functionCalls);
+             }
+
              if (msg.serverContent?.outputTranscription?.text) {
-                onTranscript?.(msg.serverContent.outputTranscription.text, false);
+                onTranscriptRef.current?.(msg.serverContent.outputTranscription.text, false);
              }
              if (msg.serverContent?.inputTranscription?.text) {
-                onTranscript?.(msg.serverContent.inputTranscription.text, true);
+                onTranscriptRef.current?.(msg.serverContent.inputTranscription.text, true);
              }
 
              const base64Audio = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
@@ -337,17 +393,18 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
           onclose: () => {
             console.log("Live session closed");
             setIsConnected(false);
+            isConnectedRef.current = false;
           },
           onerror: (err) => {
             console.error("Live session error", err);
             // Handle specific network errors
             const errMsg = err instanceof Error ? err.message : String(err);
             // Don't show error if we intentionally disconnected
-            if (isConnected) {
+            if (isConnectedRef.current) {
                 setError(errMsg.includes('unavailable') ? "Service Unavailable (Try again)" : `Error: ${errMsg}`);
             }
-            // Do NOT call disconnect() here recursively if it triggers other cleanups
             setIsConnected(false);
+            isConnectedRef.current = false;
           }
         },
         config: {
@@ -355,7 +412,8 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
           },
-          systemInstruction: "You are a warm, knowledgeable, and cool Music Companion. You act like a late-night radio host or a close friend hanging out in the studio. You have eyes and can see the user's screen or face if they share it. Comment on what you see (visual context, work, facial expressions) and suggest music that matches the vibe. Keep responses relatively short and conversational.",
+          systemInstruction: systemInstruction || defaultSystemInstruction,
+          tools: tools,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         }
@@ -369,8 +427,9 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
       disconnect(); // Cleanup
       setError(e.message || "Failed to connect");
       setIsConnected(false);
+      isConnectedRef.current = false;
     }
-  }, [onTranscript, disconnect]); 
+  }, [disconnect, systemInstruction, tools]); 
 
   useEffect(() => {
     if (isConnected && analyserRef.current) {
@@ -399,6 +458,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     videoMode,
     videoStream: videoStreamRef.current,
     toggleMute,
-    isMuted
+    isMuted,
+    sendToolResponse
   };
 };

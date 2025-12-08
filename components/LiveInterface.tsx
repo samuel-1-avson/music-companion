@@ -1,16 +1,73 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ICONS } from '../constants';
 import { useLiveSession } from '../hooks/useLiveSession';
-import { Song } from '../types';
+import { Song, MusicProvider } from '../types';
+import { Type } from '@google/genai';
+import { searchMusic, getYouTubeAudioStream, downloadAudioAsBlob, searchUnified } from '../services/musicService';
+import { searchSpotifyTrack } from '../services/spotifyService';
+import { saveSong } from '../utils/db';
 
 interface LiveInterfaceProps {
   currentSong: Song | null;
+  musicAnalyser?: AnalyserNode | null;
+  onPlaySong?: (song: Song) => void;
+  spotifyToken?: string | null;
+  musicProvider?: MusicProvider;
 }
 
-const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
+const LiveInterface: React.FC<LiveInterfaceProps> = ({ 
+    currentSong, 
+    musicAnalyser, 
+    onPlaySong, 
+    spotifyToken,
+    musicProvider = 'YOUTUBE' 
+}) => {
   const [transcripts, setTranscripts] = useState<{text: string, isUser: boolean, timestamp: number}[]>([]);
   const transcriptContainerRef = useRef<HTMLDivElement>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Define Tools
+  const tools = [{
+      functionDeclarations: [
+        {
+          name: "downloadMusic",
+          description: "Search for and download a music track to the user's offline library. Call this when the user explicitly asks to DOWNLOAD a song.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              query: { type: Type.STRING, description: "The song and artist name to search for." }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "playMusic",
+          description: "Search for and play a specific song immediately. Call this when the user asks to PLAY a song or artist.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              query: { type: Type.STRING, description: "The song and artist name to search for." }
+            },
+            required: ["query"]
+          }
+        }
+      ]
+  }];
   
+  const systemInstruction = `
+    You are a warm, knowledgeable, and cool Music Companion. 
+    You act like a late-night radio host or a close friend hanging out in the studio. 
+    
+    Capabilities:
+    1. See: You have eyes. If the user shares their screen or camera, comment on it.
+    2. DJ: You can play music. If the user asks to hear something, use the 'playMusic' tool.
+    3. Download: If the user wants to save a song for offline, use the 'downloadMusic' tool.
+    
+    Style:
+    - Keep responses concise (1-2 sentences) unless asked for deep analysis.
+    - Be enthusiastic about music.
+  `;
+
   const { 
     connect, 
     disconnect, 
@@ -24,8 +81,11 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
     videoMode,
     videoStream,
     toggleMute,
-    isMuted
+    isMuted,
+    sendToolResponse
   } = useLiveSession({
+    tools: tools,
+    systemInstruction: systemInstruction,
     onTranscript: (text, isUser) => {
       setTranscripts(prev => {
         const last = prev[prev.length - 1];
@@ -35,6 +95,138 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
         }
         return [...prev, { text, isUser, timestamp: Date.now() }];
       });
+    },
+    onToolCall: async (functionCalls) => {
+        const responses = [];
+        for (const call of functionCalls) {
+            if (call.name === 'downloadMusic') {
+                const query = call.args.query;
+                setStatusMessage(`Downloading "${query}"...`);
+                
+                try {
+                    const results = await searchMusic(query);
+                    if (results.length > 0) {
+                        const track = results[0];
+                        
+                        let downloadUrl = track.downloadUrl;
+                        if (track.source === 'YOUTUBE' && track.videoId) {
+                            const stream = await getYouTubeAudioStream(track.videoId);
+                            if (stream) downloadUrl = stream;
+                        }
+
+                        if (downloadUrl) {
+                            const blob = await downloadAudioAsBlob(downloadUrl);
+                            if (blob) {
+                                const song: Song = {
+                                    id: `dl-live-${Date.now()}`,
+                                    title: track.title,
+                                    artist: track.artist,
+                                    album: track.album,
+                                    duration: '3:00',
+                                    coverUrl: track.artworkUrl,
+                                    mood: 'Downloaded',
+                                    fileBlob: blob,
+                                    isOffline: true,
+                                    addedAt: Date.now()
+                                };
+                                await saveSong(song);
+                                setStatusMessage(`Downloaded "${track.title}" successfully.`);
+                                
+                                responses.push({
+                                    id: call.id,
+                                    name: call.name,
+                                    response: { result: `Successfully downloaded "${track.title}" by ${track.artist} to the Offline Hub.` }
+                                });
+                            } else {
+                                throw new Error("Failed to download audio blob");
+                            }
+                        } else {
+                             throw new Error("No audio stream available");
+                        }
+                    } else {
+                        setStatusMessage("No results found.");
+                        responses.push({
+                            id: call.id,
+                            name: call.name,
+                            response: { result: `Could not find any songs matching "${query}".` }
+                        });
+                    }
+                } catch (e: any) {
+                    console.error("Download error", e);
+                    setStatusMessage("Download failed.");
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { result: `Error downloading song: ${e.message}.` }
+                    });
+                }
+            }
+            
+            if (call.name === 'playMusic') {
+                const query = call.args.query;
+                setStatusMessage(`Searching for "${query}" on ${musicProvider}...`);
+
+                try {
+                    let songToPlay: Song | null = null;
+                    let source = musicProvider;
+
+                    // Use Unified Search logic
+                    if (musicProvider === 'SPOTIFY' && spotifyToken) {
+                         songToPlay = await searchSpotifyTrack(spotifyToken, query);
+                         if (!songToPlay) {
+                             // Fallback to YouTube if Spotify fails
+                             const results = await searchUnified('YOUTUBE', query);
+                             if (results.length > 0) {
+                                 songToPlay = results[0];
+                                 source = 'YOUTUBE';
+                             }
+                         }
+                    } else {
+                         const results = await searchUnified(musicProvider, query);
+                         if (results.length > 0) {
+                             songToPlay = results[0];
+                         } else {
+                             // Fallback to YouTube if preferred provider fails
+                             const results = await searchUnified('YOUTUBE', query);
+                             if (results.length > 0) {
+                                 songToPlay = results[0];
+                                 source = 'YOUTUBE';
+                             }
+                         }
+                    }
+
+                    if (songToPlay && onPlaySong) {
+                        onPlaySong(songToPlay);
+                        setStatusMessage(`Playing "${songToPlay.title}" via ${source}`);
+                        responses.push({
+                            id: call.id,
+                            name: call.name,
+                            response: { result: `Now playing "${songToPlay.title}" by ${songToPlay.artist} via ${source}.` }
+                        });
+                    } else {
+                        setStatusMessage("Song not found.");
+                        responses.push({
+                            id: call.id,
+                            name: call.name,
+                            response: { result: `I couldn't find a playable version of "${query}" on ${source}.` }
+                        });
+                    }
+                } catch (e: any) {
+                    console.error("Play error", e);
+                    setStatusMessage("Playback failed.");
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { result: `Error playing song: ${e.message}.` }
+                    });
+                }
+            }
+        }
+        
+        if (responses.length > 0) {
+            sendToolResponse(responses);
+            setTimeout(() => setStatusMessage(null), 5000);
+        }
     }
   });
 
@@ -60,7 +252,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
     }
   }, [videoStream]);
 
-  // Animation Logic for the "Entity"
+  // Animation Logic for the "Entity" and Music Visualizer
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -69,6 +261,12 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
 
     let time = 0;
     const particles: {x: number, y: number, vx: number, vy: number, life: number}[] = [];
+
+    // Frequency Buffer for Music
+    let musicDataArray: Uint8Array | null = null;
+    if (musicAnalyser) {
+        musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount);
+    }
 
     const draw = () => {
       time += 0.02;
@@ -83,6 +281,43 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
       const cx = width / 2;
       const cy = height / 2;
 
+      // --- Music Visualization Layer (Behind) ---
+      if (musicAnalyser && musicDataArray) {
+         musicAnalyser.getByteFrequencyData(musicDataArray);
+         const bars = 64; // Limit bars for cleaner look
+         const step = (Math.PI * 2) / bars;
+         const baseRadius = 100;
+
+         ctx.lineWidth = 4;
+         ctx.lineCap = 'round';
+         
+         for (let i = 0; i < bars; i++) {
+             // Map to frequency data
+             const dataIndex = Math.floor((i / bars) * (musicAnalyser.frequencyBinCount * 0.7));
+             const value = musicDataArray[dataIndex];
+             
+             if (value > 10) {
+                // Dynamic Color
+                const hue = 30 + (value / 255) * 40; // Orange (30) to Yellow (70)
+                ctx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.6)`;
+                
+                const barHeight = (value / 255) * 60;
+                const angle = i * step + (time * 0.2); // Slowly rotate
+                
+                const x1 = cx + Math.cos(angle) * baseRadius;
+                const y1 = cy + Math.sin(angle) * baseRadius;
+                const x2 = cx + Math.cos(angle) * (baseRadius + barHeight);
+                const y2 = cy + Math.sin(angle) * (baseRadius + barHeight);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+             }
+         }
+      }
+
+      // --- Voice Core Layer (Foreground) ---
       if (!isConnected) {
          // Offline State - Pulsing Dot
          const pulse = Math.sin(time * 2) * 5;
@@ -96,78 +331,90 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
          ctx.beginPath();
          ctx.arc(cx, cy, 30, 0, Math.PI * 2);
          ctx.stroke();
-         return;
-      }
-
-      // Live State Visualization
-      const baseRadius = 60;
-      const volMod = Math.max(5, volume); 
-      
-      // Main Core
-      ctx.beginPath();
-      // Deform the circle based on volume
-      for(let i=0; i<=Math.PI * 2; i+=0.1) {
-          const r = baseRadius + (volMod * 0.5) + (Math.sin(i * 5 + time * 3) * (volMod * 0.2));
-          const x = cx + Math.cos(i) * r;
-          const y = cy + Math.sin(i) * r;
-          if (i===0) ctx.moveTo(x,y);
-          else ctx.lineTo(x,y);
-      }
-      ctx.closePath();
-      
-      // Color based on state
-      if (isSpeaking) {
-          ctx.fillStyle = '#fb923c'; // Orange-400
-          ctx.shadowColor = '#fb923c';
-          ctx.shadowBlur = 20 + volMod;
       } else {
-          ctx.fillStyle = '#111'; // Black
-          ctx.shadowColor = '#fb923c';
-          ctx.shadowBlur = 0;
-      }
-      ctx.fill();
-      ctx.shadowBlur = 0; // Reset
+         // Live State Visualization
+         const baseRadius = 60;
+         const volMod = Math.max(5, volume); 
+         
+         // Main Core
+         ctx.beginPath();
+         // Deform the circle based on volume
+         for(let i=0; i<=Math.PI * 2; i+=0.1) {
+             const r = baseRadius + (volMod * 0.5) + (Math.sin(i * 5 + time * 3) * (volMod * 0.2));
+             const x = cx + Math.cos(i) * r;
+             const y = cy + Math.sin(i) * r;
+             if (i===0) ctx.moveTo(x,y);
+             else ctx.lineTo(x,y);
+         }
+         ctx.closePath();
+         
+         // Color based on state
+         if (isSpeaking) {
+             ctx.fillStyle = '#fb923c'; // Orange-400
+             ctx.shadowColor = '#fb923c';
+             ctx.shadowBlur = 20 + volMod;
+         } else {
+             ctx.fillStyle = '#111'; // Black
+             ctx.shadowColor = '#fb923c';
+             ctx.shadowBlur = 0;
+         }
+         ctx.fill();
+         ctx.shadowBlur = 0; // Reset
 
-      // Outer Rings
-      ctx.strokeStyle = '#fb923c';
-      ctx.lineWidth = 1;
-      
-      // Static Ring
-      ctx.beginPath();
-      ctx.arc(cx, cy, baseRadius + 20, 0, Math.PI * 2);
-      ctx.globalAlpha = 0.3;
-      ctx.stroke();
+         // Outer Rings
+         ctx.strokeStyle = '#fb923c';
+         ctx.lineWidth = 1.5;
+         
+         // Static Ring -> Pulsating Ring 1
+         ctx.beginPath();
+         const ring1Radius = baseRadius + 20 + (volMod * 0.2) + (Math.sin(time * 3) * 3);
+         ctx.arc(cx, cy, ring1Radius, 0, Math.PI * 2);
+         ctx.globalAlpha = 0.3 + (volMod / 300);
+         ctx.stroke();
 
-      // Dynamic Ring
-      ctx.beginPath();
-      ctx.arc(cx, cy, baseRadius + 30 + (Math.sin(time) * 5), 0, Math.PI * 2);
-      ctx.globalAlpha = 0.1 + (volMod / 200);
-      ctx.stroke();
-      
-      // Rotating segments
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(time * 0.5);
-      ctx.beginPath();
-      ctx.arc(0, 0, baseRadius + 45, 0, Math.PI * 1.5);
-      ctx.globalAlpha = 0.2;
-      ctx.stroke();
-      ctx.restore();
+         // Dynamic Ring -> Pulsating Ring 2
+         ctx.beginPath();
+         const ring2Radius = baseRadius + 35 + (volMod * 0.4) + (Math.sin(time * 2) * 5);
+         ctx.arc(cx, cy, ring2Radius, 0, Math.PI * 2);
+         ctx.globalAlpha = 0.1 + (volMod / 200);
+         ctx.stroke();
+         
+         // Rotating segments with Volume Speed
+         ctx.save();
+         ctx.translate(cx, cy);
+         ctx.rotate(time * 0.5 + (volMod * 0.01));
+         ctx.beginPath();
+         const ring3Radius = baseRadius + 50 + (volMod * 0.15);
+         ctx.arc(0, 0, ring3Radius, 0, Math.PI * 1.5);
+         ctx.globalAlpha = 0.2;
+         ctx.stroke();
+         
+         // Extra Counter-Rotating Segment
+         ctx.beginPath();
+         ctx.rotate(Math.PI);
+         ctx.arc(0, 0, ring3Radius + 10, 0, Math.PI * 0.5);
+         ctx.stroke();
+         
+         ctx.restore();
 
-      ctx.globalAlpha = 1;
+         ctx.globalAlpha = 1;
 
-      // Particles emission when speaking loud
-      if (isSpeaking && volMod > 40) {
-          for(let i=0; i<2; i++) {
-              const angle = Math.random() * Math.PI * 2;
-              particles.push({
-                  x: cx + Math.cos(angle) * baseRadius,
-                  y: cy + Math.sin(angle) * baseRadius,
-                  vx: Math.cos(angle) * (1 + Math.random()),
-                  vy: Math.sin(angle) * (1 + Math.random()),
-                  life: 1.0
-              });
-          }
+         // Particles emission when speaking loud
+         if (isSpeaking && volMod > 15) {
+             const count = volMod > 50 ? 2 : 1;
+             for(let i=0; i<count; i++) {
+                 const angle = Math.random() * Math.PI * 2;
+                 // Emit from slightly outside core
+                 const r = baseRadius + (Math.random() * 20);
+                 particles.push({
+                     x: cx + Math.cos(angle) * r,
+                     y: cy + Math.sin(angle) * r,
+                     vx: Math.cos(angle) * (0.5 + Math.random() * 2),
+                     vy: Math.sin(angle) * (0.5 + Math.random() * 2),
+                     life: 1.0
+                 });
+             }
+         }
       }
 
       // Draw Particles
@@ -175,6 +422,11 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
           const p = particles[i];
           p.x += p.vx;
           p.y += p.vy;
+          
+          // Subtle wobble animation
+          p.x += Math.sin(time * 10 + i) * 0.5;
+          p.y += Math.cos(time * 10 + i) * 0.5;
+
           p.life -= 0.02;
           
           if (p.life <= 0) {
@@ -196,7 +448,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isConnected, isSpeaking, volume]);
+  }, [isConnected, isSpeaking, volume, musicAnalyser]);
 
   const toggleCamera = () => {
     if (videoMode === 'camera') stopVideo();
@@ -255,6 +507,11 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ currentSong }) => {
                     </span>
                  ) : (
                     <span className="text-gray-400 bg-gray-100 px-3 py-1 border border-gray-300">OFFLINE</span>
+                 )}
+                 {statusMessage && (
+                     <span className="bg-blue-100 text-blue-800 border border-blue-500 px-3 py-1 animate-pulse">
+                         {statusMessage}
+                     </span>
                  )}
              </div>
 

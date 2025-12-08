@@ -1,27 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ICONS } from '../constants';
-import { Song, Message } from '../types';
+import { Song, Message, MusicProvider } from '../types';
 import { generatePlaylistFromContext, transcribeAudio } from '../services/geminiService';
+import { saveSong } from '../utils/db';
+import { searchMusic, getYouTubeAudioStream, downloadAudioAsBlob } from '../services/musicService';
 
 interface ChatInterfaceProps {
   onPlaySong: (song: Song, queue?: Song[]) => void;
   spotifyToken?: string | null;
+  musicProvider?: MusicProvider;
 }
 
 const SUGGESTED_PROMPTS = [
   { icon: ICONS.Music, label: "Deep Focus", text: "I need deep focus music for coding. No lyrics, just flow." },
-  { icon: ICONS.Heart, label: "Chill Vibes", text: "Something relaxing and lo-fi for unwinding after a long day." },
+  { icon: ICONS.DownloadCloud, label: "Download Song", text: "Download 'Midnight City' for offline listening." },
   { icon: ICONS.Play, label: "Workout Energy", text: "High tempo energetic tracks for a intense gym session." },
   { icon: ICONS.Search, label: "Discover Jazz", text: "Introduce me to some classic jazz tracks for a rainy afternoon." },
 ];
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken, musicProvider = 'YOUTUBE' }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       role: 'model',
-      text: "Hi. I am your Music Companion. State your mood or activity.",
+      text: "Hi. I am your Music Companion. State your mood, activity, or ask me to download a track.",
       type: 'text',
       timestamp: new Date()
     }
@@ -73,13 +76,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken 
     }
   }, [isRecording]);
 
+  const formatDuration = (seconds: number) => {
+      const min = Math.floor(seconds / 60);
+      const sec = Math.floor(seconds % 60);
+      return `${min}:${sec.toString().padStart(2, '0')}`;
+  };
+
   const processMessage = async (text: string, image: string | null) => {
     setIsLoading(true);
     setAttachedImage(null);
 
     try {
       const base64Data = image ? image.split(',')[1] : undefined;
-      const { explanation, songs } = await generatePlaylistFromContext(text, base64Data, spotifyToken || undefined);
+      // Pass the selected musicProvider here
+      const { explanation, songs, downloadTrack } = await generatePlaylistFromContext(text, musicProvider, base64Data, spotifyToken || undefined);
 
       const modelMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -89,6 +99,86 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken 
         timestamp: new Date()
       };
       setMessages(prev => [...prev, modelMsg]);
+
+      // Handle Explicit Download
+      if (downloadTrack) {
+         setMessages(prev => [...prev, {
+             id: `dl-status-${Date.now()}`,
+             role: 'model',
+             text: `Searching networks for "${downloadTrack}"...`,
+             type: 'text',
+             timestamp: new Date()
+         }]);
+
+         // Real Search & Download
+         try {
+             const results = await searchMusic(downloadTrack);
+             
+             if (results.length > 0) {
+                 const track = results[0];
+                 setMessages(prev => [...prev, {
+                     id: `dl-found-${Date.now()}`,
+                     role: 'model',
+                     text: `Found "${track.title}" on ${track.source === 'YOUTUBE' ? 'YouTube' : 'iTunes'}. Initializing extraction...`,
+                     type: 'text',
+                     timestamp: new Date()
+                 }]);
+
+                 let downloadUrl = track.downloadUrl;
+                 if (track.source === 'YOUTUBE' && track.videoId) {
+                     const stream = await getYouTubeAudioStream(track.videoId);
+                     if (stream) downloadUrl = stream;
+                 }
+                 
+                 if (downloadUrl) {
+                     const blob = await downloadAudioAsBlob(downloadUrl);
+                     if (blob) {
+                        const song: Song = {
+                            id: `dl-agent-${Date.now()}`,
+                            title: track.title,
+                            artist: track.artist,
+                            album: track.album,
+                            duration: formatDuration(track.duration),
+                            coverUrl: track.artworkUrl,
+                            mood: 'Downloaded',
+                            fileBlob: blob,
+                            isOffline: true,
+                            addedAt: Date.now()
+                        };
+                        await saveSong(song);
+
+                        setMessages(prev => [...prev, {
+                            id: `dl-done-${Date.now()}`,
+                            role: 'model',
+                            text: `✔ Success. Full audio for "${track.title}" has been saved to your Offline Hub.`,
+                            type: 'text',
+                            timestamp: new Date()
+                        }]);
+                     } else {
+                         throw new Error("Blob fetch failed");
+                     }
+                 } else {
+                     throw new Error("Audio stream unavailable");
+                 }
+             } else {
+                 setMessages(prev => [...prev, {
+                     id: `dl-fail-${Date.now()}`,
+                     role: 'model',
+                     text: `Could not find any matches for "${downloadTrack}".`,
+                     type: 'text',
+                     timestamp: new Date()
+                 }]);
+             }
+         } catch (e) {
+             setMessages(prev => [...prev, {
+                 id: `dl-err-${Date.now()}`,
+                 role: 'model',
+                 text: `Download failed. Network may be restricted.`,
+                 type: 'text',
+                 timestamp: new Date()
+             }]);
+         }
+      }
 
       if (songs.length > 0) {
         setMessages(prev => [...prev, {
@@ -303,6 +393,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken 
                           <div className="min-w-0">
                              <div className="font-bold font-mono text-sm truncate text-black">{song.title}</div>
                              <div className="text-xs text-gray-600 truncate font-bold">{song.artist}</div>
+                             <div className="text-[10px] text-orange-600 truncate font-mono mt-1">{song.mood}</div>
                           </div>
                        </div>
                     </div>
@@ -325,7 +416,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken 
                   <ICONS.Loader size={18} className="text-black animate-spin" />
              </div>
              <div className="bg-white border-2 border-black p-4 flex items-center space-x-3 shadow-retro-sm">
-               <span className="text-black text-sm font-bold font-mono uppercase blink">COMPUTING...</span>
+               <span className="text-black text-sm font-bold font-mono uppercase blink">COMPUTING_RESPONSE...</span>
              </div>
            </div>
         )}
@@ -411,7 +502,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken 
                <input 
                  type="text" 
                  className="flex-1 bg-transparent border-none focus:ring-0 text-black placeholder-gray-500 h-12 px-2 text-lg font-mono"
-                 placeholder={isTranscribing ? "PROCESSING..." : "TYPE_MESSAGE..."}
+                 placeholder={isTranscribing ? "PROCESSING..." : `Chat with ${musicProvider}...`}
                  value={input}
                  onChange={(e) => setInput(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}

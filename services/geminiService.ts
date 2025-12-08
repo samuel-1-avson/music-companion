@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Song } from '../types';
+import { Song, DashboardInsight, MoodData, MusicProvider } from '../types';
 import { searchSpotifyTrack } from './spotifyService';
+import { searchUnified } from './musicService';
 
 // Ensure API Key is available
 const apiKey = process.env.API_KEY || '';
@@ -9,9 +10,10 @@ const ai = new GoogleGenAI({ apiKey });
 
 export const generatePlaylistFromContext = async (
   context: string,
+  provider: MusicProvider = 'YOUTUBE',
   imageBase64?: string,
   spotifyToken?: string
-): Promise<{ explanation: string; songs: Song[] }> => {
+): Promise<{ explanation: string; songs: Song[]; downloadTrack?: string }> => {
   if (!apiKey) {
     throw new Error("API Key is missing");
   }
@@ -32,22 +34,17 @@ export const generatePlaylistFromContext = async (
     });
   }
 
-  // Different prompt depending on if we have Spotify access
-  if (spotifyToken) {
-    parts.push({
-      text: `Based on the following context: "${context}", recommend 5 songs.
-      Return a JSON object with:
-      1. 'explanation': A short friendly string explaining why you chose this vibe.
-      2. 'searchQueries': An array of strings, where each string is "Artist Name - Song Title" for the recommended songs.
-      `
-    });
-  } else {
-    parts.push({
-      text: `Based on the following context: "${context}", recommend 3-5 songs. 
-      Return a JSON object with an 'explanation' string and a 'songs' array. 
-      Each song should have 'title', 'artist', 'mood' (one word), and a rough 'duration' (e.g. '3:45').`
-    });
-  }
+  // Unified Prompt Structure: Always ask for search queries
+  parts.push({
+    text: `Based on the following context: "${context}", recommend 5 songs.
+    If the user explicitly asks to DOWNLOAD a specific song or artist, put the song name in 'downloadTrack'.
+    
+    Return a JSON object with:
+    1. 'explanation': A short friendly string explaining why you chose this vibe.
+    2. 'searchQueries': An array of strings, where each string is "Artist Name - Song Title" for the recommended songs.
+    3. 'downloadTrack': (Optional) String name of the track to download if requested.
+    `
+  });
 
   try {
     const response = await ai.models.generateContent({
@@ -55,64 +52,51 @@ export const generatePlaylistFromContext = async (
       contents: { parts },
       config: {
         responseMimeType: "application/json",
-        responseSchema: spotifyToken ? {
+        responseSchema: {
           type: Type.OBJECT,
           properties: {
             explanation: { type: Type.STRING },
             searchQueries: {
               type: Type.ARRAY,
               items: { type: Type.STRING }
-            }
-          }
-        } : {
-          type: Type.OBJECT,
-          properties: {
-            explanation: { type: Type.STRING },
-            songs: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  artist: { type: Type.STRING },
-                  mood: { type: Type.STRING },
-                  duration: { type: Type.STRING }
-                }
-              }
-            }
+            },
+            downloadTrack: { type: Type.STRING }
           }
         }
       }
     });
 
     const result = JSON.parse(response.text || "{}");
-    
-    if (spotifyToken && result.searchQueries) {
-      // Fetch real data from Spotify
-      const songPromises = result.searchQueries.map((q: string) => searchSpotifyTrack(spotifyToken, q));
-      const spotifySongs = await Promise.all(songPromises);
-      
-      // Filter out nulls (failed searches)
-      const songs = spotifySongs.filter((s: Song | null) => s !== null) as Song[];
+    const queries = result.searchQueries || [];
+    let songs: Song[] = [];
 
-      return {
-        explanation: result.explanation || "Here are some Spotify tracks for you.",
-        songs
-      };
+    if (queries.length > 0) {
+        // Resolve songs using the appropriate provider
+        const songPromises = queries.map(async (q: string) => {
+            try {
+                // If Spotify is selected and we have a token, use Spotify directly
+                if (provider === 'SPOTIFY' && spotifyToken) {
+                    return await searchSpotifyTrack(spotifyToken, q);
+                } 
+                // Otherwise use the unified search (handles YT, Apple, Deezer)
+                else {
+                    const results = await searchUnified(provider, q, spotifyToken);
+                    return results.length > 0 ? results[0] : null;
+                }
+            } catch (e) {
+                return null;
+            }
+        });
 
-    } else {
-      // Fallback to hallucinates songs
-      const songs: Song[] = (result.songs || []).map((s: any, idx: number) => ({
-        ...s,
-        id: `gen-${Date.now()}-${idx}`,
-        coverUrl: `https://picsum.photos/200/200?random=${Math.floor(Math.random() * 1000)}`
-      }));
-
-      return {
-        explanation: result.explanation || "Here is some music for you.",
-        songs
-      };
+        const resolvedSongs = await Promise.all(songPromises);
+        songs = resolvedSongs.filter((s: Song | null) => s !== null) as Song[];
     }
+
+    return {
+      explanation: result.explanation || "Here is some music for you.",
+      songs,
+      downloadTrack: result.downloadTrack
+    };
 
   } catch (error) {
     console.error("Gemini Error:", error);
@@ -153,6 +137,9 @@ export const transcribeAudio = async (audioBase64: string, mimeType: string = 'a
 };
 
 export const searchSongs = async (query: string): Promise<Song[]> => {
+  // This is a legacy/fallback function. 
+  // In the new architecture, we prefer 'searchUnified' in musicService.ts
+  // But we keep this for direct Gemini Hallucination if needed, though updated to be less used.
   if (!apiKey) {
     throw new Error("API Key is missing");
   }
@@ -280,6 +267,15 @@ export const recommendNextSong = async (currentSong: Song, recentHistory: Song[]
      if (spotifyToken && result.searchQuery) {
         return await searchSpotifyTrack(spotifyToken, result.searchQuery);
      } else if (result.song) {
+        // Fallback or Hallucination if no spotify token
+        // Ideally we should use searchUnified here too, but for speed in Auto-DJ we might skip it or implement it similarly
+        // For now, let's try to resolve it via YouTube if possible using searchUnified
+        try {
+            const q = `${result.song.artist} - ${result.song.title}`;
+            const searchRes = await searchUnified('YOUTUBE', q);
+            if (searchRes.length > 0) return searchRes[0];
+        } catch(e) {}
+
         return {
            ...result.song,
            id: `gen-next-${Date.now()}`,
@@ -329,5 +325,63 @@ export const analyzeSongMeaning = async (artist: string, title: string, lyrics: 
     return response.text?.trim() || "Analysis unavailable.";
   } catch (e) {
     return "Analysis unavailable.";
+  }
+};
+
+export const generateDashboardInsights = async (moodHistory: MoodData[]): Promise<DashboardInsight> => {
+  if (!apiKey) throw new Error("API Key missing");
+  const model = "gemini-2.5-flash";
+  
+  const now = new Date();
+  const timeOfDay = now.getHours() < 12 ? "morning" : now.getHours() < 18 ? "afternoon" : "evening";
+  const recentVibes = moodHistory.slice(-5).map(m => `${m.time}: ${m.label} (${m.score}%)`).join(", ");
+
+  const prompt = `
+    Analyze this listener's recent music/mood history and the current time of day (${timeOfDay}).
+    History: ${recentVibes}.
+    
+    1. Grade their "Sonic Identity" from S (highest) to C based on mood consistency and flow (A for focused flow, C for erratic skipping).
+    2. Provide a 3-5 word "Title" for their current state (e.g. "Deep Flow State", "Erratic Explorer").
+    3. Suggest a specific recommendation or routine change to optimize their day (e.g. "Switch to high tempo to avoid afternoon slump").
+    4. Suggest a specific next genre.
+    
+    Return JSON.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+             grade: { type: Type.STRING },
+             title: { type: Type.STRING },
+             recommendation: { type: Type.STRING },
+             actionLabel: { type: Type.STRING },
+             nextGenre: { type: Type.STRING }
+          }
+        }
+      }
+    });
+    
+    const data = JSON.parse(response.text || "{}");
+    return {
+      grade: data.grade || "B",
+      title: data.title || "Casual Listener",
+      recommendation: data.recommendation || "Keep listening to refine your profile.",
+      actionLabel: data.actionLabel || "Optimize Vibe",
+      nextGenre: data.nextGenre || "Lo-Fi"
+    };
+  } catch (e) {
+    return {
+      grade: "B",
+      title: "Data Analyzing...",
+      recommendation: "Collect more listening data to unlock insights.",
+      actionLabel: "Refresh",
+      nextGenre: "Pop"
+    };
   }
 };
