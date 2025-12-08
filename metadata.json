@@ -1,0 +1,9 @@
+{
+  "name": "Music Companion AI",
+  "description": "An intelligent AI agent that understands your mood and context to recommend music, featuring voice interaction and screen analysis.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "display-capture"
+  ]
+}
