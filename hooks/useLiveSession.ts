@@ -11,6 +11,8 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
   const [error, setError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false); 
   const [volume, setVolume] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false);
 
   // Audio Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -32,6 +34,14 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
   const [videoMode, setVideoMode] = useState<'camera' | 'screen' | null>(null);
 
   const animationFrameRef = useRef<number | null>(null);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+        const next = !prev;
+        isMutedRef.current = next;
+        return next;
+    });
+  }, []);
 
   const analyzeAudio = () => {
     if (!analyserRef.current || !isConnected) return;
@@ -205,6 +215,8 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     setIsConnected(false);
     setIsSpeaking(false);
     setVolume(0);
+    setIsMuted(false);
+    isMutedRef.current = false;
   }, [stopVideo]);
 
   const connect = useCallback(async () => {
@@ -256,6 +268,7 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
 
             processor.onaudioprocess = (e) => {
               if (!inputContextRef.current) return;
+              if (isMutedRef.current) return; // Mute Check
               
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createPcmBlob(inputData);
@@ -384,6 +397,8 @@ export const useLiveSession = ({ onTranscript }: UseLiveSessionProps) => {
     stopVideo,
     isVideoActive,
     videoMode,
-    videoStream: videoStreamRef.current
+    videoStream: videoStreamRef.current,
+    toggleMute,
+    isMuted
   };
 };
