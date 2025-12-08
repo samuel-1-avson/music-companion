@@ -1,0 +1,92 @@
+import { 
+  Music, 
+  Mic, 
+  MessageSquare, 
+  LayoutDashboard, 
+  Settings, 
+  Play, 
+  Pause, 
+  SkipForward, 
+  SkipBack, 
+  Volume2, 
+  Download, 
+  Upload,
+  Image as ImageIcon,
+  Send,
+  Loader2,
+  Radio,
+  BarChart2,
+  Heart,
+  Square,
+  Search,
+  ScrollText,
+  X,
+  Copy,
+  Check,
+  ExternalLink,
+  User,
+  ScreenShare,
+  Save
+} from 'lucide-react';
+
+export const ICONS = {
+  Music,
+  Mic,
+  MessageSquare,
+  Dashboard: LayoutDashboard,
+  Settings,
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Volume2,
+  Download,
+  Upload,
+  Image: ImageIcon,
+  Send,
+  Loader: Loader2,
+  Live: Radio,
+  Chart: BarChart2,
+  Heart,
+  Square,
+  Search,
+  Lyrics: ScrollText,
+  Close: X,
+  Copy,
+  Check,
+  ExternalLink,
+  User,
+  ScreenShare,
+  Save
+};
+
+export const MOCK_SONGS: any[] = [
+  { id: '1', title: 'Midnight City', artist: 'M83', duration: '4:03', coverUrl: 'https://picsum.photos/200/200?random=1', mood: 'Energetic' },
+  { id: '2', title: 'Nightcall', artist: 'Kavinsky', duration: '4:18', coverUrl: 'https://picsum.photos/200/200?random=2', mood: 'Cool' },
+  { id: '3', title: 'Resonance', artist: 'Home', duration: '3:32', coverUrl: 'https://picsum.photos/200/200?random=3', mood: 'Focus' },
+];
+
+export const MOCK_MOOD_DATA = [
+  { time: '09:00', score: 65, label: 'Calm' },
+  { time: '11:00', score: 80, label: 'Focused' },
+  { time: '13:00', score: 50, label: 'Tired' },
+  { time: '15:00', score: 90, label: 'Energetic' },
+  { time: '17:00', score: 75, label: 'Happy' },
+];
+
+export const MOCK_MOOD_DATA_WEEK = [
+  { time: 'Mon', score: 60, label: 'Calm' },
+  { time: 'Tue', score: 75, label: 'Focused' },
+  { time: 'Wed', score: 85, label: 'Energetic' },
+  { time: 'Thu', score: 50, label: 'Tired' },
+  { time: 'Fri', score: 90, label: 'Happy' },
+  { time: 'Sat', score: 80, label: 'Relaxed' },
+  { time: 'Sun', score: 65, label: 'Calm' },
+];
+
+export const MOCK_MOOD_DATA_MONTH = [
+  { time: 'Week 1', score: 70, label: 'Focused' },
+  { time: 'Week 2', score: 60, label: 'Calm' },
+  { time: 'Week 3', score: 85, label: 'Energetic' },
+  { time: 'Week 4', score: 75, label: 'Happy' },
+];

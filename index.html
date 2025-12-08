@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Companion AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body { 
+        font-family: 'Inter', sans-serif; 
+        background-color: #fcfbf9;
+        color: #1a1a1a;
+      }
+      h1, h2, h3, h4, h5, h6, .font-mono {
+        font-family: 'IBM Plex Mono', monospace;
+      }
+      
+      /* Retro Scrollbar */
+      ::-webkit-scrollbar { width: 12px; }
+      ::-webkit-scrollbar-track { 
+        background: #fcfbf9; 
+        border-left: 2px solid #000; 
+      }
+      ::-webkit-scrollbar-thumb { 
+        background: #000; 
+        border: 2px solid #fcfbf9;
+        border-radius: 0; 
+      }
+      ::-webkit-scrollbar-thumb:hover { background: #333; }
+
+      /* Utility for hard shadows */
+      .shadow-retro {
+        box-shadow: 4px 4px 0px 0px #000;
+      }
+      .shadow-retro-sm {
+        box-shadow: 2px 2px 0px 0px #000;
+      }
+      .shadow-retro-lg {
+        box-shadow: 6px 6px 0px 0px #000;
+      }
+      .hover\:shadow-retro-hover:hover {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0px 0px #000;
+      }
+      .active\:shadow-retro-active:active {
+        transform: translate(4px, 4px);
+        box-shadow: 0px 0px 0px 0px #000;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-[#fcfbf9] text-gray-900 overflow-hidden">
+    <div id="root"></div>
+  </body>
+</html>
