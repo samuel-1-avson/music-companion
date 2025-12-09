@@ -207,49 +207,112 @@ const Extensions: React.FC<ExtensionsProps> = ({ onPlaySong, spotifyToken, music
            </div>
         </div>
 
-        {/* BROWSER EXTENSION CARD */}
-        <div className="lg:col-span-3 bg-white border-2 border-black p-6 shadow-retro flex flex-col md:flex-row gap-6 items-center">
-            <div className="w-20 h-20 bg-orange-500 border-2 border-black flex items-center justify-center text-white shadow-retro-sm flex-shrink-0">
-               <ICONS.Globe size={40} />
+        {/* TELEGRAM INTEGRATION */}
+        <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group">
+            <div className="flex items-center space-x-4 mb-4">
+                <div className="w-12 h-12 bg-[#0088cc] border-2 border-black flex items-center justify-center text-white shadow-retro-sm">
+                    <ICONS.Send size={24} className="-ml-1 mt-1 -rotate-12" />
+                </div>
+                <div>
+                    <h3 className="text-lg font-bold font-mono">Telegram Bot</h3>
+                    <p className="text-xs text-green-600 font-bold uppercase">● Active</p>
+                </div>
             </div>
-            
-            <div className="flex-1">
-               <h3 className="text-xl font-bold font-mono mb-1">Browser Context Streamer</h3>
-               <p className="text-sm text-gray-600 font-mono mb-3">Chrome • Firefox • Safari</p>
-               <p className="text-sm text-gray-800 mb-4 max-w-2xl">
-                  Analyzes the text content of your active tab to recommend music. Perfect for reading documentation, researching topics, or casual browsing. Privacy-first: only sends text when you click the extension icon.
-               </p>
-               
-               <div className="flex flex-wrap gap-2">
-                  <button 
-                    onClick={() => simulateContext('BROWSER', 'PAGE_LOAD', 'reading React Documentation about Hooks and State. Need helpful, brain-stimulating background music.')}
+            <p className="text-xs text-gray-600 font-mono mb-4">
+                Control playback and get vibe checks directly from your chat. Send voice notes for analysis.
+            </p>
+            <div className="space-y-2 mb-4">
+                <button 
+                    onClick={() => simulateContext('TELEGRAM', 'CMD_VIBE', 'asking for a vibe check via Telegram command /vibe.')}
                     disabled={!!activeSimulation}
-                    className="px-3 py-1 bg-gray-100 border border-gray-400 text-xs font-mono hover:bg-black hover:text-white transition-colors"
-                  >
-                     TEST: READ_DOCS
-                  </button>
-                  <button 
-                    onClick={() => simulateContext('BROWSER', 'SOCIAL_MEDIA', 'scrolling through Twitter/X. Fast-paced, short attention span context. Need trendy, short upbeat songs.')}
+                    className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-mono transition-colors"
+                >
+                    <span className="font-bold text-blue-700">User:</span> /vibe check
+                </button>
+                <button 
+                    onClick={() => simulateContext('TELEGRAM', 'VOICE_NOTE', 'sent a voice note describing a rainy day feeling. Need melancholy jazz.')}
                     disabled={!!activeSimulation}
-                    className="px-3 py-1 bg-gray-100 border border-gray-400 text-xs font-mono hover:bg-black hover:text-white transition-colors"
-                  >
-                     TEST: SOCIAL_SCROLL
-                  </button>
-                  <button 
-                     onClick={() => simulateContext('BROWSER', 'RESEARCH', 'reading a long, dense academic paper about Quantum Physics. Need minimal, abstract, deep focus music.')}
-                     disabled={!!activeSimulation}
-                     className="px-3 py-1 bg-gray-100 border border-gray-400 text-xs font-mono hover:bg-black hover:text-white transition-colors"
-                  >
-                     TEST: ACADEMIC_PAPER
-                  </button>
+                    className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-mono transition-colors"
+                >
+                    <span className="font-bold text-blue-700">User:</span> [Voice Note 0:15]
+                </button>
+            </div>
+            <button className="w-full py-2 border-2 border-black font-bold font-mono text-xs hover:bg-[#0088cc] hover:text-white transition-colors">
+                OPEN_BOT
+            </button>
+        </div>
+
+        {/* DISCORD INTEGRATION */}
+        <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group">
+            <div className="flex items-center space-x-4 mb-4">
+                <div className="w-12 h-12 bg-[#5865F2] border-2 border-black flex items-center justify-center text-white shadow-retro-sm">
+                    <ICONS.Game size={24} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-bold font-mono">Discord Jukebox</h3>
+                    <p className="text-xs text-green-600 font-bold uppercase">● Active</p>
+                </div>
+            </div>
+            <p className="text-xs text-gray-600 font-mono mb-4">
+                Syncs music with your voice channel activity and game status rich presence.
+            </p>
+            <div className="space-y-2 mb-4">
+                <button 
+                    onClick={() => simulateContext('DISCORD', 'VC_JOIN', 'joined the "Lounge" voice channel late at night. Need chill lo-fi beats.')}
+                    disabled={!!activeSimulation}
+                    className="w-full text-left px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-mono transition-colors"
+                >
+                    <span className="font-bold text-indigo-700">Event:</span> User joined #Lounge
+                </button>
+                <button 
+                    onClick={() => simulateContext('DISCORD', 'GAME_START', 'started playing "Elden Ring". Need epic, orchestral, dark fantasy music.')}
+                    disabled={!!activeSimulation}
+                    className="w-full text-left px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-mono transition-colors"
+                >
+                    <span className="font-bold text-indigo-700">Presence:</span> Playing Elden Ring
+                </button>
+            </div>
+            <button className="w-full py-2 border-2 border-black font-bold font-mono text-xs hover:bg-[#5865F2] hover:text-white transition-colors">
+                INVITE_BOT
+            </button>
+        </div>
+
+        {/* BROWSER EXTENSION CARD (Condensed) */}
+        <div className="bg-white border-2 border-black p-6 shadow-retro flex flex-col relative overflow-hidden group">
+            <div className="flex items-center space-x-4 mb-4">
+               <div className="w-12 h-12 bg-orange-500 border-2 border-black flex items-center justify-center text-white shadow-retro-sm flex-shrink-0">
+                  <ICONS.Globe size={24} />
+               </div>
+               <div>
+                  <h3 className="text-lg font-bold font-mono">Web Streamer</h3>
+                  <p className="text-xs text-gray-500 font-bold">Chrome • Firefox</p>
                </div>
             </div>
-
-            <div className="flex-shrink-0">
-               <button className="bg-white text-black border-2 border-black px-6 py-3 font-bold font-mono text-sm hover:shadow-retro-sm transition-all active:translate-x-[2px] active:translate-y-[2px]">
-                  INSTALL_EXTENSION
+            
+            <p className="text-xs text-gray-600 font-mono mb-4 flex-1">
+               Contextual music based on active tab content.
+            </p>
+            
+            <div className="space-y-2 mb-4">
+               <button 
+                 onClick={() => simulateContext('BROWSER', 'PAGE_LOAD', 'reading React Docs. Need focus music.')}
+                 disabled={!!activeSimulation}
+                 className="w-full text-left px-3 py-2 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-xs font-mono transition-colors"
+               >
+                  <span className="font-bold text-orange-700">Tab:</span> React Documentation
+               </button>
+               <button 
+                 onClick={() => simulateContext('BROWSER', 'SOCIAL_MEDIA', 'scrolling Twitter. Need upbeat pop.')}
+                 disabled={!!activeSimulation}
+                 className="w-full text-left px-3 py-2 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-xs font-mono transition-colors"
+               >
+                  <span className="font-bold text-orange-700">Tab:</span> Twitter / X
                </button>
             </div>
+
+            <button className="w-full bg-white text-black border-2 border-black py-2 font-bold font-mono text-xs hover:bg-black hover:text-white transition-colors">
+               INSTALL
+            </button>
         </div>
 
       </div>

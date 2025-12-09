@@ -128,6 +128,12 @@ const Settings: React.FC<SettingsProps> = ({
       { id: 'lavender', label: 'Lavender', bg: '#faf5ff', color: '#d8b4fe' }
   ];
 
+  const cycleTheme = () => {
+    const currentIndex = themes.findIndex(t => t.id === currentTheme);
+    const nextIndex = (currentIndex + 1) % themes.length;
+    onSetTheme(themes[nextIndex].id);
+  };
+
   const providers: { id: MusicProvider; label: string; icon: any }[] = [
       { id: 'SPOTIFY', label: 'Spotify', icon: ICONS.Music },
       { id: 'YOUTUBE', label: 'YouTube', icon: ICONS.Play },
@@ -144,14 +150,23 @@ const Settings: React.FC<SettingsProps> = ({
       
       {/* Theme Selector */}
       <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
-          <div className="flex items-center space-x-4 border-b-2 border-theme pb-4 mb-6">
-             <div className="bg-[var(--primary)] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
-                <ICONS.Image size={24} className="text-[var(--text-main)]" />
+          <div className="flex items-center justify-between border-b-2 border-theme pb-4 mb-6">
+             <div className="flex items-center space-x-4">
+                 <div className="bg-[var(--primary)] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
+                    <ICONS.Image size={24} className="text-[var(--text-main)]" />
+                 </div>
+                 <div>
+                    <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">UI_THEME</h3>
+                    <p className="text-xs text-[var(--text-muted)] font-mono">Select your visual interface.</p>
+                 </div>
              </div>
-             <div>
-                <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">UI_THEME</h3>
-                <p className="text-xs text-[var(--text-muted)] font-mono">Select your visual interface.</p>
-             </div>
+             <button 
+               onClick={cycleTheme}
+               className="flex items-center gap-2 px-4 py-2 border-2 border-theme bg-[var(--bg-hover)] text-[var(--text-main)] font-mono text-xs font-bold uppercase hover:bg-[var(--primary)] hover:text-black transition-colors shadow-retro-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px]"
+             >
+                <ICONS.Sliders size={14} />
+                Cycle Theme
+             </button>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

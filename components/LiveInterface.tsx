@@ -25,6 +25,9 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
   const [transcripts, setTranscripts] = useState<{text: string, isUser: boolean, timestamp: number}[]>([]);
   const transcriptContainerRef = useRef<HTMLDivElement>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  
+  // Video Preview Ref
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   // Define Tools
   const tools = [{
@@ -84,554 +87,308 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
     isMuted,
     sendToolResponse
   } = useLiveSession({
-    tools: tools,
-    systemInstruction: systemInstruction,
+    systemInstruction,
+    tools,
     onTranscript: (text, isUser) => {
-      setTranscripts(prev => {
-        const last = prev[prev.length - 1];
-        // Merge contiguous messages from same user if they are recent
-        if (last && last.isUser === isUser && (Date.now() - last.timestamp < 3000)) {
-           return [...prev.slice(0, -1), { text: last.text + " " + text, isUser, timestamp: Date.now() }];
-        }
-        return [...prev, { text, isUser, timestamp: Date.now() }];
-      });
+        setTranscripts(prev => [...prev.slice(-4), { text, isUser, timestamp: Date.now() }]);
     },
     onToolCall: async (functionCalls) => {
-        const responses = [];
         for (const call of functionCalls) {
-            if (call.name === 'downloadMusic') {
-                const query = call.args.query;
-                setStatusMessage(`Downloading "${query}"...`);
-                
-                try {
-                    const results = await searchMusic(query);
-                    if (results.length > 0) {
-                        const track = results[0];
-                        
-                        let downloadUrl = track.downloadUrl;
-                        if (track.source === 'YOUTUBE' && track.videoId) {
-                            const stream = await getYouTubeAudioStream(track.videoId);
-                            if (stream) downloadUrl = stream;
-                        }
-
-                        if (downloadUrl) {
-                            const blob = await downloadAudioAsBlob(downloadUrl);
-                            if (blob) {
-                                const song: Song = {
-                                    id: `dl-live-${Date.now()}`,
-                                    title: track.title,
-                                    artist: track.artist,
-                                    album: track.album,
-                                    duration: '3:00',
-                                    coverUrl: track.artworkUrl,
-                                    mood: 'Downloaded',
-                                    fileBlob: blob,
-                                    isOffline: true,
-                                    addedAt: Date.now()
-                                };
-                                await saveSong(song);
-                                setStatusMessage(`Downloaded "${track.title}" successfully.`);
-                                
-                                responses.push({
-                                    id: call.id,
-                                    name: call.name,
-                                    response: { result: `Successfully downloaded "${track.title}" by ${track.artist} to the Offline Hub.` }
-                                });
-                            } else {
-                                throw new Error("Failed to download audio blob");
-                            }
-                        } else {
-                             throw new Error("No audio stream available");
-                        }
-                    } else {
-                        setStatusMessage("No results found.");
-                        responses.push({
-                            id: call.id,
-                            name: call.name,
-                            response: { result: `Could not find any songs matching "${query}".` }
-                        });
-                    }
-                } catch (e: any) {
-                    console.error("Download error", e);
-                    setStatusMessage("Download failed.");
-                    responses.push({
-                        id: call.id,
-                        name: call.name,
-                        response: { result: `Error downloading song: ${e.message}.` }
-                    });
-                }
-            }
-            
             if (call.name === 'playMusic') {
-                const query = call.args.query;
-                setStatusMessage(`Searching for "${query}" on ${musicProvider}...`);
-
+                setStatusMessage(`DJing: Searching for "${call.args.query}"...`);
                 try {
-                    let songToPlay: Song | null = null;
-                    let source = musicProvider;
-
-                    // Use Unified Search logic
-                    if (musicProvider === 'SPOTIFY' && spotifyToken) {
-                         songToPlay = await searchSpotifyTrack(spotifyToken, query);
-                         if (!songToPlay) {
-                             // Fallback to YouTube if Spotify fails
-                             const results = await searchUnified('YOUTUBE', query);
-                             if (results.length > 0) {
-                                 songToPlay = results[0];
-                                 source = 'YOUTUBE';
-                             }
-                         }
-                    } else {
-                         const results = await searchUnified(musicProvider, query);
-                         if (results.length > 0) {
-                             songToPlay = results[0];
-                         } else {
-                             // Fallback to YouTube if preferred provider fails
-                             const results = await searchUnified('YOUTUBE', query);
-                             if (results.length > 0) {
-                                 songToPlay = results[0];
-                                 source = 'YOUTUBE';
-                             }
-                         }
-                    }
-
-                    if (songToPlay && onPlaySong) {
-                        onPlaySong(songToPlay);
-                        setStatusMessage(`Playing "${songToPlay.title}" via ${source}`);
-                        responses.push({
-                            id: call.id,
-                            name: call.name,
-                            response: { result: `Now playing "${songToPlay.title}" by ${songToPlay.artist} via ${source}.` }
+                    const results = await searchUnified(musicProvider, call.args.query, spotifyToken);
+                    if (results.length > 0 && onPlaySong) {
+                        onPlaySong(results[0]);
+                        sendToolResponse({
+                            functionResponses: [{
+                                response: { result: `Playing ${results[0].title} by ${results[0].artist}` },
+                                id: call.id
+                            }]
                         });
+                        setStatusMessage(null);
                     } else {
+                        sendToolResponse({
+                            functionResponses: [{
+                                response: { result: "No song found." },
+                                id: call.id
+                            }]
+                        });
                         setStatusMessage("Song not found.");
-                        responses.push({
-                            id: call.id,
-                            name: call.name,
-                            response: { result: `I couldn't find a playable version of "${query}" on ${source}.` }
-                        });
+                        setTimeout(() => setStatusMessage(null), 2000);
                     }
-                } catch (e: any) {
-                    console.error("Play error", e);
-                    setStatusMessage("Playback failed.");
-                    responses.push({
-                        id: call.id,
-                        name: call.name,
-                        response: { result: `Error playing song: ${e.message}.` }
-                    });
+                } catch (e) {
+                    console.error(e);
+                    setStatusMessage("Error playing music.");
+                    setTimeout(() => setStatusMessage(null), 2000);
                 }
+            } else if (call.name === 'downloadMusic') {
+                 setStatusMessage(`Downloading "${call.args.query}"...`);
+                 try {
+                     // 1. Search for the track
+                     const results = await searchMusic(call.args.query);
+                     
+                     if (results.length > 0) {
+                         const track = results[0];
+                         setStatusMessage(`Found "${track.title}". Extracting audio...`);
+                         
+                         // 2. Respond to AI immediately so it can speak/acknowledge
+                         sendToolResponse({
+                            functionResponses: [{
+                                response: { result: `Download started for ${track.title}.` },
+                                id: call.id
+                            }]
+                         });
+
+                         // 3. Process Download in background
+                         let downloadUrl = track.downloadUrl;
+                         if (track.source === 'YOUTUBE' && track.videoId) {
+                             const stream = await getYouTubeAudioStream(track.videoId);
+                             if (stream) downloadUrl = stream;
+                         }
+
+                         if (downloadUrl) {
+                             const blob = await downloadAudioAsBlob(downloadUrl);
+                             if (blob) {
+                                 const song: Song = {
+                                     id: `dl-live-${Date.now()}`,
+                                     title: track.title,
+                                     artist: track.artist,
+                                     album: track.album,
+                                     duration: '3:00', // Approximate as we don't parse full metadata here
+                                     coverUrl: track.artworkUrl,
+                                     mood: 'Downloaded',
+                                     fileBlob: blob,
+                                     isOffline: true,
+                                     addedAt: Date.now()
+                                 };
+                                 await saveSong(song);
+                                 setStatusMessage(`✔ Saved "${track.title}" to Library`);
+                             } else {
+                                 setStatusMessage(`Download failed for "${track.title}"`);
+                             }
+                         } else {
+                             setStatusMessage(`No audio stream found for "${track.title}"`);
+                         }
+                     } else {
+                         sendToolResponse({
+                            functionResponses: [{
+                                response: { result: "Song not found." },
+                                id: call.id
+                            }]
+                         });
+                         setStatusMessage("Song not found for download.");
+                     }
+                 } catch (e) {
+                     console.error(e);
+                     setStatusMessage("Download Error.");
+                     // Ensure response is sent if we fail before sending it
+                     try {
+                         sendToolResponse({
+                            functionResponses: [{
+                                response: { result: "Error executing download." },
+                                id: call.id
+                            }]
+                         });
+                     } catch(err) {}
+                 }
+                 setTimeout(() => setStatusMessage(null), 3000);
             }
-        }
-        
-        if (responses.length > 0) {
-            sendToolResponse(responses);
-            setTimeout(() => setStatusMessage(null), 5000);
         }
     }
   });
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoPreviewRef = useRef<HTMLVideoElement>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  // Attach video stream to preview element
+  useEffect(() => {
+    if (previewVideoRef.current && videoStream) {
+        previewVideoRef.current.srcObject = videoStream;
+    }
+  }, [videoStream, isVideoActive]);
 
-  // Auto-scroll transcript
+  // Auto-scroll transcripts
   useEffect(() => {
     if (transcriptContainerRef.current) {
         transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
     }
   }, [transcripts]);
 
-  // Attach video stream to preview element
-  useEffect(() => {
-    if (videoPreviewRef.current) {
-        if (videoStream) {
-            videoPreviewRef.current.srcObject = videoStream;
-        } else {
-            videoPreviewRef.current.srcObject = null;
-        }
-    }
-  }, [videoStream]);
-
-  // Animation Logic for the "Entity" and Music Visualizer
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let time = 0;
-    const particles: {x: number, y: number, vx: number, vy: number, life: number}[] = [];
-
-    // Frequency Buffer for Music
-    let musicDataArray: Uint8Array | null = null;
-    if (musicAnalyser) {
-        musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount);
-    }
-
-    const draw = () => {
-      time += 0.02;
-      
-      const { width, height } = canvas.getBoundingClientRect();
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      ctx.clearRect(0, 0, width, height);
-      const cx = width / 2;
-      const cy = height / 2;
-
-      // --- Music Visualization Layer (Behind) ---
-      if (musicAnalyser && musicDataArray) {
-         musicAnalyser.getByteFrequencyData(musicDataArray);
-         const bars = 64; // Limit bars for cleaner look
-         const step = (Math.PI * 2) / bars;
-         const baseRadius = 100;
-
-         ctx.lineWidth = 4;
-         ctx.lineCap = 'round';
-         
-         for (let i = 0; i < bars; i++) {
-             // Map to frequency data
-             const dataIndex = Math.floor((i / bars) * (musicAnalyser.frequencyBinCount * 0.7));
-             const value = musicDataArray[dataIndex];
-             
-             if (value > 10) {
-                // Dynamic Color
-                const hue = 30 + (value / 255) * 40; // Orange (30) to Yellow (70)
-                ctx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.6)`;
-                
-                const barHeight = (value / 255) * 60;
-                const angle = i * step + (time * 0.2); // Slowly rotate
-                
-                const x1 = cx + Math.cos(angle) * baseRadius;
-                const y1 = cy + Math.sin(angle) * baseRadius;
-                const x2 = cx + Math.cos(angle) * (baseRadius + barHeight);
-                const y2 = cy + Math.sin(angle) * (baseRadius + barHeight);
-
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.stroke();
-             }
-         }
-      }
-
-      // --- Voice Core Layer (Foreground) ---
-      if (!isConnected) {
-         // Offline State - Pulsing Dot
-         const pulse = Math.sin(time * 2) * 5;
-         ctx.beginPath();
-         ctx.arc(cx, cy, 10 + pulse, 0, Math.PI * 2);
-         ctx.fillStyle = '#d1d5db'; // gray-300
-         ctx.fill();
-         
-         ctx.strokeStyle = '#9ca3af';
-         ctx.lineWidth = 1;
-         ctx.beginPath();
-         ctx.arc(cx, cy, 30, 0, Math.PI * 2);
-         ctx.stroke();
-      } else {
-         // Live State Visualization
-         const baseRadius = 60;
-         const volMod = Math.max(5, volume); 
-         
-         // Main Core
-         ctx.beginPath();
-         // Deform the circle based on volume
-         for(let i=0; i<=Math.PI * 2; i+=0.1) {
-             const r = baseRadius + (volMod * 0.5) + (Math.sin(i * 5 + time * 3) * (volMod * 0.2));
-             const x = cx + Math.cos(i) * r;
-             const y = cy + Math.sin(i) * r;
-             if (i===0) ctx.moveTo(x,y);
-             else ctx.lineTo(x,y);
-         }
-         ctx.closePath();
-         
-         // Color based on state
-         if (isSpeaking) {
-             ctx.fillStyle = '#fb923c'; // Orange-400
-             ctx.shadowColor = '#fb923c';
-             ctx.shadowBlur = 20 + volMod;
-         } else {
-             ctx.fillStyle = '#111'; // Black
-             ctx.shadowColor = '#fb923c';
-             ctx.shadowBlur = 0;
-         }
-         ctx.fill();
-         ctx.shadowBlur = 0; // Reset
-
-         // Outer Rings
-         ctx.strokeStyle = '#fb923c';
-         ctx.lineWidth = 1.5;
-         
-         // Static Ring -> Pulsating Ring 1
-         ctx.beginPath();
-         const ring1Radius = baseRadius + 20 + (volMod * 0.2) + (Math.sin(time * 3) * 3);
-         ctx.arc(cx, cy, ring1Radius, 0, Math.PI * 2);
-         ctx.globalAlpha = 0.3 + (volMod / 300);
-         ctx.stroke();
-
-         // Dynamic Ring -> Pulsating Ring 2
-         ctx.beginPath();
-         const ring2Radius = baseRadius + 35 + (volMod * 0.4) + (Math.sin(time * 2) * 5);
-         ctx.arc(cx, cy, ring2Radius, 0, Math.PI * 2);
-         ctx.globalAlpha = 0.1 + (volMod / 200);
-         ctx.stroke();
-         
-         // Rotating segments with Volume Speed
-         ctx.save();
-         ctx.translate(cx, cy);
-         ctx.rotate(time * 0.5 + (volMod * 0.01));
-         ctx.beginPath();
-         const ring3Radius = baseRadius + 50 + (volMod * 0.15);
-         ctx.arc(0, 0, ring3Radius, 0, Math.PI * 1.5);
-         ctx.globalAlpha = 0.2;
-         ctx.stroke();
-         
-         // Extra Counter-Rotating Segment
-         ctx.beginPath();
-         ctx.rotate(Math.PI);
-         ctx.arc(0, 0, ring3Radius + 10, 0, Math.PI * 0.5);
-         ctx.stroke();
-         
-         ctx.restore();
-
-         ctx.globalAlpha = 1;
-
-         // Particles emission when speaking loud
-         if (isSpeaking && volMod > 15) {
-             const count = volMod > 50 ? 2 : 1;
-             for(let i=0; i<count; i++) {
-                 const angle = Math.random() * Math.PI * 2;
-                 // Emit from slightly outside core
-                 const r = baseRadius + (Math.random() * 20);
-                 particles.push({
-                     x: cx + Math.cos(angle) * r,
-                     y: cy + Math.sin(angle) * r,
-                     vx: Math.cos(angle) * (0.5 + Math.random() * 2),
-                     vy: Math.sin(angle) * (0.5 + Math.random() * 2),
-                     life: 1.0
-                 });
-             }
-         }
-      }
-
-      // Draw Particles
-      for(let i=particles.length-1; i>=0; i--) {
-          const p = particles[i];
-          p.x += p.vx;
-          p.y += p.vy;
-          
-          // Subtle wobble animation
-          p.x += Math.sin(time * 10 + i) * 0.5;
-          p.y += Math.cos(time * 10 + i) * 0.5;
-
-          p.life -= 0.02;
-          
-          if (p.life <= 0) {
-              particles.splice(i, 1);
-              continue;
-          }
-
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 2 * p.life, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(251, 146, 60, ${p.life})`;
-          ctx.fill();
-      }
-
-      animationFrameRef.current = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [isConnected, isSpeaking, volume, musicAnalyser]);
-
-  const toggleCamera = () => {
-    if (videoMode === 'camera') stopVideo();
-    else startVideo('camera');
-  };
-
-  const toggleScreen = () => {
-    if (videoMode === 'screen') stopVideo();
-    else startVideo('screen');
-  };
+  const isScreenShare = videoMode === 'screen';
+  const themeColor = isScreenShare ? 'blue' : 'red';
+  const borderColor = isScreenShare ? 'border-blue-500' : 'border-red-500';
+  const shadowColor = isScreenShare ? 'shadow-[0_0_20px_rgba(59,130,246,0.3)]' : 'shadow-[0_0_20px_rgba(239,68,68,0.3)]';
+  const badgeColor = isScreenShare ? 'bg-blue-600' : 'bg-red-600';
+  const textColor = isScreenShare ? 'text-blue-400' : 'text-red-400';
 
   return (
-    <div className="flex h-full bg-[#fcfbf9] text-black relative overflow-hidden">
-      
-      {/* Background Grid Texture */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-           style={{ 
-             backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', 
-             backgroundSize: '40px 40px' 
-           }}>
-      </div>
+    <div className="flex flex-col h-full relative overflow-hidden bg-[#111] text-white">
+       
+       {/* Background Visualizer / Ambient */}
+       <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-orange-500 rounded-full blur-[100px] transition-all duration-300 ${isSpeaking ? 'scale-150 opacity-40' : 'scale-100 opacity-20'}`}></div>
+       </div>
 
-      {/* LEFT COLUMN: Visualizer & Controls */}
-      <div className="flex-1 flex flex-col relative z-10">
-          
-          {/* Header */}
-          <div className="p-6 flex justify-between items-start pointer-events-none">
-            <div>
-               <div className="bg-black text-white px-3 py-1 text-xs font-mono font-bold inline-block mb-2 shadow-retro-sm">LIVE_SESSION_V2</div>
-               <h2 className="text-3xl font-bold font-mono tracking-tighter uppercase">Echo Vision</h2>
-            </div>
-            {currentSong && (
-               <div className="bg-white border-2 border-black p-2 shadow-retro-sm flex items-center space-x-3 pointer-events-auto animate-in fade-in slide-in-from-top-2">
-                  <div className="w-8 h-8 border border-black bg-gray-200 flex-shrink-0">
-                     <img src={currentSong.coverUrl} className="w-full h-full object-cover grayscale" alt="art"/>
-                  </div>
-                  <div className="min-w-0 max-w-[120px]">
-                     <div className="text-[9px] font-bold font-mono text-gray-500 uppercase">Playing</div>
-                     <div className="font-bold text-xs truncate">{currentSong.title}</div>
-                  </div>
-               </div>
-            )}
-          </div>
-
-          {/* Main Visualizer Area */}
-          <div className="flex-1 flex flex-col items-center justify-center relative">
-             {/* Status Badge */}
-             <div className="absolute top-4 font-mono font-bold text-xs uppercase flex items-center space-x-3">
-                 {error ? (
-                    <span className="text-white bg-red-600 px-3 py-1 shadow-retro-sm">ERROR: {error}</span>
-                 ) : isConnected ? (
-                    <span className="bg-white border border-black px-3 py-1 shadow-[2px_2px_0_0_rgba(0,0,0,0.1)] flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`}></span>
-                        {isSpeaking ? 'VOICE_ACTIVE' : 'LISTENING'}
-                        {isMuted && <span className="text-red-500 ml-1">[MUTED]</span>}
-                    </span>
-                 ) : (
-                    <span className="text-gray-400 bg-gray-100 px-3 py-1 border border-gray-300">OFFLINE</span>
-                 )}
-                 {statusMessage && (
-                     <span className="bg-blue-100 text-blue-800 border border-blue-500 px-3 py-1 animate-pulse">
-                         {statusMessage}
-                     </span>
-                 )}
-             </div>
-
-             {/* Canvas Container */}
-             <div className="relative w-full max-w-md aspect-square flex items-center justify-center">
-                <canvas ref={canvasRef} className="w-full h-full" />
+       {/* Video Preview Layer */}
+       {isVideoActive && (
+         <div className="absolute top-0 right-0 p-4 z-20 w-full md:w-1/3 max-w-sm animate-in slide-in-from-right duration-500">
+            <div className={`bg-black border-2 ${borderColor} ${shadowColor} relative group`}>
+                <video 
+                  ref={previewVideoRef} 
+                  autoPlay 
+                  muted 
+                  playsInline 
+                  className="w-full h-auto object-cover opacity-90" 
+                />
                 
-                {!isConnected && (
-                    <button 
-                      onClick={connect}
-                      className="absolute z-20 bg-black text-white hover:bg-orange-500 hover:text-black hover:border-black border-2 border-transparent transition-all w-24 h-24 rounded-full flex items-center justify-center shadow-2xl font-bold font-mono text-sm uppercase tracking-widest active:scale-95 group"
-                    >
-                       <ICONS.Radio size={24} className="group-hover:animate-ping absolute opacity-20" />
-                       <span className="relative z-10">CONNECT</span>
-                    </button>
-                )}
-             </div>
-             
-             {/* Controls Bar */}
-             <div className="mb-12 flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-500">
-                {isConnected && (
-                    <>
-                        <button 
-                            onClick={toggleMute}
-                            className={`p-4 border-2 border-black rounded-full transition-all active:scale-95 shadow-retro-sm hover:shadow-retro-hover ${isMuted ? 'bg-red-500 text-white' : 'bg-white text-black hover:bg-gray-50'}`}
-                            title={isMuted ? "Unmute Mic" : "Mute Mic"}
-                        >
+                <div className={`absolute top-0 left-0 ${badgeColor} text-white text-[10px] font-bold font-mono px-2 py-1 uppercase flex items-center gap-2 animate-pulse`}>
+                   <div className="w-2 h-2 bg-white rounded-full"></div>
+                   {isScreenShare ? 'SCREEN_SHARE_ACTIVE' : 'LIVE_CAMERA_FEED'}
+                </div>
+                
+                {/* Mode Icon Overlay */}
+                <div className="absolute bottom-2 right-2 opacity-50 p-1 bg-black/50 rounded">
+                    {isScreenShare ? <ICONS.ScreenShare size={20} className="text-blue-400" /> : <ICONS.Image size={20} className="text-red-400" />}
+                </div>
+
+                <button 
+                  onClick={stopVideo}
+                  className={`absolute top-2 right-2 bg-black/50 hover:${isScreenShare ? 'bg-blue-600' : 'bg-red-600'} text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity`}
+                >
+                   <ICONS.Close size={16} />
+                </button>
+            </div>
+            <p className={`text-[10px] font-mono ${textColor} mt-1 text-right`}>
+                {isScreenShare ? 'ANALYZING SCREEN CONTEXT...' : 'STREAMING VISUAL DATA...'}
+            </p>
+         </div>
+       )}
+
+       {/* Main Content Area */}
+       <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-8">
+           
+           {!isConnected ? (
+              <div className="text-center space-y-6">
+                 <div className="inline-block p-6 rounded-full border-2 border-white/20 bg-white/5 mb-4">
+                    <ICONS.Live size={64} className="text-gray-400" />
+                 </div>
+                 <h2 className="text-3xl font-bold font-mono tracking-tight">LIVE SESSION</h2>
+                 <p className="text-gray-400 max-w-md mx-auto font-mono text-sm">
+                    Connect for real-time voice and vision interaction. I can see your screen, analyze code, or just vibe with you.
+                 </p>
+                 
+                 {error && (
+                    <div className="bg-red-900/50 border border-red-500 p-4 text-red-200 text-sm font-mono max-w-md mx-auto">
+                        {error}
+                    </div>
+                 )}
+
+                 <button 
+                   onClick={connect}
+                   className="bg-white text-black px-8 py-4 font-bold font-mono text-lg hover:bg-orange-500 hover:scale-105 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                 >
+                    INITIALIZE UPLINK
+                 </button>
+              </div>
+           ) : (
+              <div className="w-full max-w-4xl flex flex-col h-full">
+                 
+                 {/* Header Status */}
+                 <div className="flex justify-between items-start mb-8 relative">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                        <span className="font-mono text-xs font-bold text-green-500 tracking-widest uppercase">
+                            Signal Established • {volume > 10 ? 'Receiving Audio' : 'Idle'}
+                        </span>
+                    </div>
+                    
+                    {/* Active Action / Tool Status Overlay */}
+                    {statusMessage && (
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 animate-in fade-in slide-in-from-top-2 w-full max-w-sm">
+                             <div className="bg-black/90 backdrop-blur-sm border border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] px-4 py-2 flex items-center justify-center gap-3 rounded-sm">
+                                <div className="w-2 h-2 bg-orange-500 rounded-full animate-ping"></div>
+                                <span className="text-orange-500 font-mono text-xs font-bold uppercase tracking-widest truncate">{statusMessage}</span>
+                             </div>
+                        </div>
+                    )}
+                 </div>
+
+                 {/* Center Visual/Transcript */}
+                 <div className="flex-1 flex flex-col justify-end pb-12 space-y-6 relative">
+                     {/* Transcript Overlay */}
+                     <div ref={transcriptContainerRef} className="max-h-[60vh] overflow-y-auto space-y-4 pr-4 scrollbar-hide">
+                         {transcripts.length === 0 && (
+                             <div className="text-center text-gray-600 font-mono text-sm italic">
+                                Listening for input...
+                             </div>
+                         )}
+                         {transcripts.map((t, i) => (
+                             <div key={t.timestamp + i} className={`flex ${t.isUser ? 'justify-end' : 'justify-start'}`}>
+                                 <div className={`max-w-[80%] p-4 border-2 ${
+                                     t.isUser 
+                                     ? 'border-gray-600 bg-gray-900/50 text-gray-300 rounded-tl-xl rounded-bl-xl rounded-br-xl' 
+                                     : 'border-orange-500 bg-orange-900/20 text-orange-100 rounded-tr-xl rounded-br-xl rounded-bl-xl shadow-[0_0_15px_rgba(249,115,22,0.1)]'
+                                 }`}>
+                                     <p className="font-mono text-sm md:text-base leading-relaxed">{t.text}</p>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+
+                 {/* Control Deck */}
+                 <div className="bg-[#1a1a1a] border-t-2 border-gray-800 p-6 -mx-8 -mb-8 flex items-center justify-between">
+                     <div className="flex items-center gap-4">
+                         {/* Mic Control */}
+                         <button 
+                           onClick={toggleMute}
+                           className={`h-14 w-14 rounded-full border-2 flex items-center justify-center transition-all ${
+                               isMuted 
+                               ? 'border-red-500 bg-red-900/20 text-red-500' 
+                               : 'border-white bg-white text-black hover:bg-gray-200'
+                           }`}
+                           title={isMuted ? "Unmute" : "Mute"}
+                         >
                             {isMuted ? <ICONS.MicOff size={24} /> : <ICONS.Mic size={24} />}
-                        </button>
+                         </button>
 
-                        <button 
-                            onClick={toggleCamera}
-                            className={`p-4 border-2 border-black rounded-full transition-all active:scale-95 shadow-retro-sm hover:shadow-retro-hover ${videoMode === 'camera' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-50'}`}
-                            title="Toggle Camera"
-                        >
-                            <ICONS.Image size={24} />
-                        </button>
+                         {/* Camera Control */}
+                         <button 
+                           onClick={() => isVideoActive && videoMode === 'camera' ? stopVideo() : startVideo('camera')}
+                           disabled={isVideoActive && videoMode !== 'camera'}
+                           className={`h-14 px-6 rounded-full border-2 flex items-center gap-3 font-bold font-mono text-xs uppercase transition-all ${
+                               isVideoActive && videoMode === 'camera'
+                               ? 'border-red-500 bg-red-500 text-white animate-pulse'
+                               : 'border-gray-600 text-gray-300 hover:border-white hover:text-white disabled:opacity-30'
+                           }`}
+                         >
+                            <ICONS.Image size={20} />
+                            {isVideoActive && videoMode === 'camera' ? 'Stop Cam' : 'Camera'}
+                         </button>
 
-                        <button 
-                            onClick={toggleScreen}
-                            className={`p-4 border-2 border-black rounded-full transition-all active:scale-95 shadow-retro-sm hover:shadow-retro-hover ${videoMode === 'screen' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-50'}`}
-                            title="Share Screen"
-                        >
-                            <ICONS.ScreenShare size={24} />
-                        </button>
+                         {/* Screen Share Control */}
+                         <button 
+                           onClick={() => isVideoActive && videoMode === 'screen' ? stopVideo() : startVideo('screen')}
+                           disabled={isVideoActive && videoMode !== 'screen'}
+                           className={`h-14 px-6 rounded-full border-2 flex items-center gap-3 font-bold font-mono text-xs uppercase transition-all ${
+                               isVideoActive && videoMode === 'screen'
+                               ? 'border-blue-500 bg-blue-500 text-white animate-pulse'
+                               : 'border-gray-600 text-gray-300 hover:border-white hover:text-white disabled:opacity-30'
+                           }`}
+                         >
+                            <ICONS.ScreenShare size={20} />
+                            {isVideoActive && videoMode === 'screen' ? 'Stop Share' : 'Share Screen'}
+                         </button>
+                     </div>
 
-                        <div className="w-px h-10 bg-gray-300 mx-2"></div>
-
-                        <button 
-                            onClick={disconnect}
-                            className="px-6 py-4 font-bold font-mono bg-red-100 text-red-600 border-2 border-red-500 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-widest shadow-retro-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-                        >
-                            END
-                        </button>
-                    </>
-                )}
-             </div>
-          </div>
-      </div>
-
-      {/* RIGHT COLUMN: Transcript & Vision Preview */}
-      <div className="w-80 border-l-2 border-black bg-white flex flex-col relative z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]">
-         
-         {/* Vision Preview (Sticky Top) */}
-         {isVideoActive && (
-            <div className="aspect-video bg-black border-b-2 border-black relative overflow-hidden group">
-               <video 
-                 ref={videoPreviewRef} 
-                 autoPlay 
-                 muted 
-                 playsInline
-                 className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
-               />
-               <div className="absolute top-2 left-2 bg-red-600 text-white text-[9px] font-mono px-1 font-bold animate-pulse">
-                  LIVE_FEED
-               </div>
-               <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black to-transparent p-2">
-                  <p className="text-white text-[10px] font-mono truncate">
-                      {videoMode === 'camera' ? 'CAMERA_INPUT_01' : 'SCREEN_CAPTURE_01'}
-                  </p>
-               </div>
-            </div>
-         )}
-
-         {/* Transcript Header */}
-         <div className="p-4 border-b-2 border-black bg-gray-50 flex justify-between items-center">
-            <h3 className="font-mono font-bold text-xs uppercase flex items-center gap-2">
-               <ICONS.ScrollText size={14} /> Transcript
-            </h3>
-            <div className="flex space-x-1">
-               <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
-               <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
-            </div>
-         </div>
-         
-         {/* Transcript List */}
-         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fa]" ref={transcriptContainerRef}>
-            {transcripts.length === 0 && (
-               <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                  <ICONS.MessageSquare size={24} className="mb-2" />
-                  <p className="text-[10px] font-mono uppercase tracking-widest">Awaiting Audio...</p>
-               </div>
-            )}
-            
-            {transcripts.map((t, i) => (
-               <div key={i} className={`flex flex-col ${t.isUser ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                  <div className={`max-w-[90%] p-3 rounded-none border shadow-[2px_2px_0_0_rgba(0,0,0,0.1)] ${
-                      t.isUser 
-                        ? 'bg-white border-gray-300 text-gray-800 rounded-tl-lg rounded-bl-lg rounded-br-none' 
-                        : 'bg-orange-50 border-orange-200 text-black rounded-tr-lg rounded-br-lg rounded-bl-none'
-                  }`}>
-                     <span className="text-[9px] font-bold block mb-1 opacity-40 uppercase font-mono tracking-wider">
-                        {t.isUser ? 'YOU' : 'ECHO'}
-                     </span>
-                     <p className="text-xs leading-relaxed font-medium">{t.text}</p>
-                  </div>
-               </div>
-            ))}
-         </div>
-      </div>
+                     <button 
+                       onClick={disconnect}
+                       className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold font-mono uppercase text-sm border-2 border-red-800 rounded shadow-lg transition-all active:scale-95"
+                     >
+                        End Session
+                     </button>
+                 </div>
+              </div>
+           )}
+       </div>
     </div>
   );
 };

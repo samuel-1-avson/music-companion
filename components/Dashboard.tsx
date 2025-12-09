@@ -12,14 +12,23 @@ interface DashboardProps {
   spotifyToken?: string | null;
   moodData: MoodData[];
   musicProvider?: MusicProvider;
+  onSetMusicProvider: (provider: MusicProvider) => void;
 }
+
+const PROVIDER_CONFIG: Record<MusicProvider, { label: string; icon: any; color: string; bg: string }> = {
+  'YOUTUBE': { label: 'YouTube', icon: ICONS.Play, color: 'text-red-600', bg: 'bg-red-50' },
+  'SPOTIFY': { label: 'Spotify', icon: ICONS.Music, color: 'text-green-600', bg: 'bg-green-50' },
+  'APPLE': { label: 'Apple Music', icon: ICONS.Radio, color: 'text-pink-600', bg: 'bg-pink-50' },
+  'DEEZER': { label: 'Deezer', icon: ICONS.Activity, color: 'text-purple-600', bg: 'bg-purple-50' },
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     onPlaySong, 
     onChangeView, 
     spotifyToken, 
     moodData,
-    musicProvider = 'YOUTUBE' // Default fallback
+    musicProvider = 'YOUTUBE', // Default fallback
+    onSetMusicProvider
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Song[]>([]);
@@ -88,10 +97,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     setSearchPerformed(false);
   };
 
-  // Dynamic greeting
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
-
   const renderSongCard = (song: Song, contextQueue: Song[]) => (
     <div 
       key={song.id} 
@@ -100,6 +105,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     >
       <div className="relative w-16 h-16 border-2 border-black flex-shrink-0 bg-gray-100">
         {song.coverUrl && <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300" />}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 transition-colors">
+           {/* Overlay could go here */}
+        </div>
       </div>
       <div className="flex-1 min-w-0">
           <h4 className="font-bold text-[var(--text-main)] truncate font-mono uppercase text-sm group-hover:text-[var(--primary-hover)] transition-colors">{song.title}</h4>
@@ -132,32 +140,77 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="p-8 space-y-8 pb-32">
-      {/* Search Bar (Top Fixed/Sticky vibe) */}
-      <div className="relative w-full max-w-2xl mx-auto z-20">
-          <div className="text-[10px] font-mono uppercase text-[var(--text-muted)] text-center mb-2">
-              SEARCHING: <span className="font-bold text-[var(--text-main)]">{musicProvider}</span>
+      {/* Search Bar Container */}
+      <div className="relative w-full max-w-3xl mx-auto z-20">
+          
+          {/* Provider Selector Tabs */}
+          <div className="flex justify-center mb-0 relative z-10">
+             <div className="inline-flex bg-[var(--bg-card)] border-2 border-b-0 border-theme shadow-sm p-1 gap-1">
+                {(Object.keys(PROVIDER_CONFIG) as MusicProvider[]).map((p) => {
+                   const config = PROVIDER_CONFIG[p];
+                   const isActive = musicProvider === p;
+                   return (
+                      <button
+                        key={p}
+                        onClick={() => onSetMusicProvider(p)}
+                        className={`
+                           flex items-center gap-2 px-3 py-2 text-xs font-bold font-mono uppercase transition-all border border-transparent
+                           ${isActive 
+                              ? `bg-black text-white shadow-sm` 
+                              : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'
+                           }
+                        `}
+                      >
+                         <config.icon size={14} className={isActive ? 'text-[var(--primary)]' : ''} />
+                         {config.label}
+                      </button>
+                   );
+                })}
+             </div>
           </div>
-          <form onSubmit={handleSearch}>
-             <div className="relative group shadow-retro-sm focus-within:shadow-retro transition-shadow">
-                <ICONS.Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[var(--text-muted)] z-10" size={20} strokeWidth={2.5} />
+
+          {/* Main Search Input */}
+          <form onSubmit={handleSearch} className="relative">
+             <div className={`
+                relative flex items-center bg-[var(--bg-card)] border-4 border-black p-1 transition-all
+                ${isSearching ? 'shadow-none translate-y-[2px]' : 'shadow-retro-lg'}
+             `}>
+                <div className="pl-4 pr-2">
+                   <ICONS.Search size={24} className="text-[var(--text-main)]" strokeWidth={3} />
+                </div>
                 <input 
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="SEARCH_DB..."
-                  className="w-full bg-[var(--bg-card)] border-2 border-theme py-4 pl-12 pr-12 text-[var(--text-main)] font-mono font-bold placeholder-gray-400 focus:outline-none transition-all text-lg"
+                  placeholder={`SEARCH ${PROVIDER_CONFIG[musicProvider].label.toUpperCase()} DATABASE...`}
+                  className="w-full bg-transparent border-none py-4 px-2 text-[var(--text-main)] font-mono font-bold placeholder-gray-400 focus:ring-0 text-xl tracking-tight"
                 />
+                
                 {searchQuery && (
                    <button 
                      type="button" 
                      onClick={clearSearch} 
-                     className="absolute right-4 top-1/2 transform -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--primary)]"
+                     className="p-2 mr-2 text-gray-400 hover:text-red-500 transition-colors"
                    >
-                     <ICONS.Close size={20} />
+                     <ICONS.Close size={24} />
                    </button>
                 )}
+
+                <button 
+                   type="submit"
+                   className="bg-black text-white px-8 py-3 font-bold font-mono text-sm uppercase hover:bg-[var(--primary)] hover:text-black transition-colors border-l-2 border-black"
+                >
+                   {isSearching ? 'SCANNING' : 'GO'}
+                </button>
              </div>
           </form>
+          
+          {/* Helper Text */}
+          <div className="mt-2 text-center">
+             <p className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
+                Searching Global Network via {musicProvider}
+             </p>
+          </div>
       </div>
 
       {searchPerformed ? (
