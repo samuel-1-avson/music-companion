@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ICONS } from '../constants';
 
@@ -66,9 +65,10 @@ const TheLab: React.FC<TheLabProps> = ({ setEQBand, eqValues = [0,0,0,0,0] }) =>
     });
 
     return () => {
-        Object.values(audioRefs.current).forEach(audio => {
-            audio.pause();
-            audio.src = '';
+        Object.values(audioRefs.current).forEach((audio) => {
+            const a = audio as HTMLAudioElement;
+            a.pause();
+            a.src = '';
         });
         if (audioCtxRef.current) audioCtxRef.current.close();
     };

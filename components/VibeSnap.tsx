@@ -60,7 +60,7 @@ const VibeSnap: React.FC<VibeSnapProps> = ({ onPlaylistGenerated, spotifyToken, 
       stopCamera(); // Close camera immediately after snap
 
       try {
-        const { songs } = await generatePlaylistFromContext("Generate a vibe based on this visual context.", musicProvider, base64, spotifyToken || undefined);
+        const { songs } = await generatePlaylistFromContext("Generate a vibe based on this visual context.", musicProvider as MusicProvider, base64, spotifyToken || undefined);
         onPlaylistGenerated(songs);
       } catch (e) {
         console.error("Vibe Snap Failed", e);

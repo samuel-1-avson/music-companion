@@ -47,7 +47,7 @@ const Extensions: React.FC<ExtensionsProps> = ({ onPlaySong, spotifyToken, music
 
     try {
       const fullPrompt = `The user is currently ${promptContext}. Suggest music for this activity.`;
-      const { songs, explanation } = await generatePlaylistFromContext(fullPrompt, musicProvider, undefined, spotifyToken || undefined);
+      const { songs, explanation } = await generatePlaylistFromContext(fullPrompt, musicProvider as MusicProvider, undefined, spotifyToken || undefined);
       
       addLog('SYSTEM', `PROCESSED: Found ${songs.length} tracks from ${musicProvider}`);
       if (songs.length > 0) {

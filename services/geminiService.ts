@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Song, DashboardInsight, MoodData, MusicProvider } from '../types';
 import { searchSpotifyTrack } from './spotifyService';
@@ -104,6 +105,45 @@ export const generatePlaylistFromContext = async (
   }
 };
 
+export const consultFocusAgent = async (
+    userQuery: string, 
+    currentMode: 'FOCUS' | 'BREAK'
+): Promise<{ reply: string; suggestedAction: 'NONE' | 'CHANGE_MUSIC' | 'TAKE_BREAK'; musicQuery?: string }> => {
+    if (!apiKey) return { reply: "API Key missing", suggestedAction: 'NONE' };
+    
+    const model = "gemini-2.5-flash";
+    const prompt = `
+        You are a minimalist Focus Coach AI. The user is in ${currentMode} mode.
+        User says: "${userQuery}".
+        
+        Respond with a JSON object:
+        1. 'reply': A very short, punchy, lower-case motivational response or acknowledgment (max 10 words). style: terminal/hacker.
+        2. 'suggestedAction': One of 'NONE', 'CHANGE_MUSIC' (if they ask for different vibes), 'TAKE_BREAK'.
+        3. 'musicQuery': If action is CHANGE_MUSIC, provide a search string for the new vibe (e.g. "Pink Floyd").
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        reply: { type: Type.STRING },
+                        suggestedAction: { type: Type.STRING },
+                        musicQuery: { type: Type.STRING }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) {
+        return { reply: "connection_error", suggestedAction: 'NONE' };
+    }
+};
+
 export const transcribeAudio = async (audioBase64: string, mimeType: string = 'audio/webm'): Promise<string> => {
   if (!apiKey) {
     throw new Error("API Key is missing");
@@ -133,60 +173,6 @@ export const transcribeAudio = async (audioBase64: string, mimeType: string = 'a
   } catch (error) {
     console.error("Transcription Error:", error);
     throw error;
-  }
-};
-
-export const searchSongs = async (query: string): Promise<Song[]> => {
-  // This is a legacy/fallback function. 
-  // In the new architecture, we prefer 'searchUnified' in musicService.ts
-  // But we keep this for direct Gemini Hallucination if needed, though updated to be less used.
-  if (!apiKey) {
-    throw new Error("API Key is missing");
-  }
-
-  const model = "gemini-2.5-flash";
-  
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `Search for 5 songs that match the query: "${query}". 
-      Return a JSON object with a 'songs' array. 
-      Each song should have 'title', 'artist', 'album', 'mood' (one word), and a rough 'duration' (e.g. '3:45').`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            songs: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  artist: { type: Type.STRING },
-                  album: { type: Type.STRING },
-                  mood: { type: Type.STRING },
-                  duration: { type: Type.STRING }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    const result = JSON.parse(response.text || "{}");
-    
-    // Enrich with dummy IDs and cover URLs
-    return (result.songs || []).map((s: any, idx: number) => ({
-      ...s,
-      id: `gen-search-${Date.now()}-${idx}`,
-      coverUrl: `https://picsum.photos/200/200?random=${Math.floor(Math.random() * 1000)}`
-    }));
-
-  } catch (error) {
-    console.error("Gemini Search Error:", error);
-    return [];
   }
 };
 
@@ -268,8 +254,6 @@ export const recommendNextSong = async (currentSong: Song, recentHistory: Song[]
         return await searchSpotifyTrack(spotifyToken, result.searchQuery);
      } else if (result.song) {
         // Fallback or Hallucination if no spotify token
-        // Ideally we should use searchUnified here too, but for speed in Auto-DJ we might skip it or implement it similarly
-        // For now, let's try to resolve it via YouTube if possible using searchUnified
         try {
             const q = `${result.song.artist} - ${result.song.title}`;
             const searchRes = await searchUnified('YOUTUBE', q);

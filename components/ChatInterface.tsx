@@ -89,7 +89,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
     try {
       const base64Data = image ? image.split(',')[1] : undefined;
       // Pass the selected musicProvider here
-      const { explanation, songs, downloadTrack } = await generatePlaylistFromContext(text, musicProvider, base64Data, spotifyToken || undefined);
+      const { explanation, songs, downloadTrack } = await generatePlaylistFromContext(text, musicProvider as MusicProvider, base64Data, spotifyToken || undefined);
 
       const modelMsg: Message = {
         id: (Date.now() + 1).toString(),

@@ -82,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setSearchPerformed(true);
     try {
       // Use unified search
-      const results = await searchUnified(musicProvider, searchQuery, spotifyToken);
+      const results = await searchUnified(musicProvider as MusicProvider, searchQuery, spotifyToken);
       setSearchResults(results);
     } catch (error) {
       console.error("Search failed", error);
