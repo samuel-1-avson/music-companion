@@ -97,7 +97,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
             if (call.name === 'playMusic') {
                 setStatusMessage(`DJing: Searching for "${call.args.query}"...`);
                 try {
-                    const results = await searchUnified(musicProvider, call.args.query, spotifyToken);
+                    const results = await searchUnified(musicProvider as MusicProvider, call.args.query, spotifyToken);
                     if (results.length > 0 && onPlaySong) {
                         onPlaySong(results[0]);
                         sendToolResponse({
