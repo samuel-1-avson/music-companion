@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
 import MoodChart from './MoodChart';
-import VibeSnap from './VibeSnap';
 import { ICONS, MOCK_SONGS } from '../constants';
 import { Song, AppView, MoodData, DashboardInsight, MusicProvider } from '../types';
 import { searchUnified } from '../services/musicService';
@@ -15,11 +15,11 @@ interface DashboardProps {
   onSetMusicProvider: (provider: MusicProvider) => void;
 }
 
-const PROVIDER_CONFIG: Record<MusicProvider, { label: string; icon: any; color: string; bg: string }> = {
-  'YOUTUBE': { label: 'YouTube', icon: ICONS.Play, color: 'text-red-600', bg: 'bg-red-50' },
-  'SPOTIFY': { label: 'Spotify', icon: ICONS.Music, color: 'text-green-600', bg: 'bg-green-50' },
-  'APPLE': { label: 'Apple Music', icon: ICONS.Radio, color: 'text-pink-600', bg: 'bg-pink-50' },
-  'DEEZER': { label: 'Deezer', icon: ICONS.Activity, color: 'text-purple-600', bg: 'bg-purple-50' },
+const PROVIDER_CONFIG: Record<MusicProvider, { label: string; icon: any }> = {
+  'YOUTUBE': { label: 'YouTube', icon: ICONS.Play },
+  'SPOTIFY': { label: 'Spotify', icon: ICONS.Music },
+  'APPLE': { label: 'Apple Music', icon: ICONS.Radio },
+  'DEEZER': { label: 'Deezer', icon: ICONS.Activity },
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -27,7 +27,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     onChangeView, 
     spotifyToken, 
     moodData,
-    musicProvider = 'YOUTUBE', // Default fallback
+    musicProvider = 'YOUTUBE', 
     onSetMusicProvider
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,24 +35,23 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchPerformed, setSearchPerformed] = useState(false);
   
-  // Intelligence State
   const [insight, setInsight] = useState<DashboardInsight | null>(null);
   const [loadingInsight, setLoadingInsight] = useState(false);
 
-  // Simulated User Stats
+  // Time of day greeting
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  // Calculate Level Title (Subtle)
   const userLevel = Math.floor(moodData.length / 5) + 1;
-  const xp = (moodData.length % 5) * 20;
-  
-  // Calculate Listener Title based on level
   const getLevelTitle = (lvl: number) => {
-     if (lvl < 2) return "NOVICE_LISTENER";
-     if (lvl < 5) return "AUDIO_EXPLORER";
-     if (lvl < 10) return "SONIC_CURATOR";
-     return "SONIC_ARCHITECT";
+     if (lvl < 2) return "Novice";
+     if (lvl < 5) return "Explorer";
+     if (lvl < 10) return "Curator";
+     return "Architect";
   };
 
   useEffect(() => {
-    // Generate AI Insights periodically or on load if enough data
     if (moodData.length > 0 && !insight) {
         refreshInsights();
     }
@@ -81,7 +80,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     setIsSearching(true);
     setSearchPerformed(true);
     try {
-      // Use unified search
       const results = await searchUnified(musicProvider as MusicProvider, searchQuery, spotifyToken);
       setSearchResults(results);
     } catch (error) {
@@ -97,307 +95,223 @@ const Dashboard: React.FC<DashboardProps> = ({
     setSearchPerformed(false);
   };
 
-  const renderSongCard = (song: Song, contextQueue: Song[]) => (
+  const renderSongRow = (song: Song, contextQueue: Song[]) => (
     <div 
       key={song.id} 
-      className="bg-[var(--bg-card)] border-2 border-theme p-4 flex items-center space-x-4 hover:shadow-retro hover:-translate-y-1 transition-all duration-200 group cursor-pointer" 
       onClick={() => onPlaySong(song, contextQueue)}
+      className="group flex items-center justify-between p-4 hover:bg-[var(--bg-hover)] rounded-2xl transition-all cursor-pointer border border-transparent hover:border-[var(--border)]"
     >
-      <div className="relative w-16 h-16 border-2 border-black flex-shrink-0 bg-gray-100">
-        {song.coverUrl && <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300" />}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 transition-colors">
-           {/* Overlay could go here */}
+      <div className="flex items-center gap-4 overflow-hidden">
+        <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+           <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+              <ICONS.Play size={16} fill="currentColor" />
+           </div>
+        </div>
+        <div className="min-w-0">
+           <h4 className="font-medium text-[var(--text-main)] truncate text-base">{song.title}</h4>
+           <p className="text-xs text-[var(--text-muted)] truncate">{song.artist}</p>
         </div>
       </div>
-      <div className="flex-1 min-w-0">
-          <h4 className="font-bold text-[var(--text-main)] truncate font-mono uppercase text-sm group-hover:text-[var(--primary-hover)] transition-colors">{song.title}</h4>
-          <p className="text-xs text-[var(--text-muted)] truncate font-bold">
-            {song.artist}{song.album && <span className="font-normal"> • {song.album}</span>}
-          </p>
-          <div className="flex items-center mt-2 space-x-2">
-            <span className="text-xs text-[var(--text-main)] border border-theme px-1 font-mono">{song.duration}</span>
-            {song.mood && (
-              <span className="text-[10px] text-black bg-[var(--primary)] px-1 border border-black font-bold uppercase">
-                  {song.mood}
-              </span>
-            )}
-          </div>
-      </div>
-      <div className="flex flex-col space-y-2">
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onPlaySong(song, contextQueue);
-          }}
-          title="Play Preview"
-          className="w-10 h-10 border-2 border-black bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-black flex items-center justify-center transition-all shadow-retro-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px]"
-        >
-            <ICONS.Play size={18} fill="currentColor" className="ml-0.5" />
-        </button>
+      <div className="text-xs font-mono text-[var(--text-muted)] group-hover:text-[var(--primary)] transition-colors">
+         {song.duration}
       </div>
     </div>
   );
 
   return (
-    <div className="p-8 space-y-8 pb-32">
-      {/* Search Bar Container */}
-      <div className="relative w-full max-w-3xl mx-auto z-20">
-          
-          {/* Provider Selector Tabs */}
-          <div className="flex justify-center mb-0 relative z-10">
-             <div className="inline-flex bg-[var(--bg-card)] border-2 border-b-0 border-theme shadow-sm p-1 gap-1">
-                {(Object.keys(PROVIDER_CONFIG) as MusicProvider[]).map((p) => {
-                   const config = PROVIDER_CONFIG[p];
-                   const isActive = musicProvider === p;
-                   return (
-                      <button
+    <div className="h-full flex flex-col relative overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-6 md:p-12 scroll-smooth">
+        <div className="max-w-5xl mx-auto space-y-12">
+           
+           {/* --- HERO SECTION --- */}
+           <section className="space-y-8 pt-4 md:pt-10 text-center">
+              <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-card)]/50 backdrop-blur-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)]">
+                          System Online • {getLevelTitle(userLevel)}
+                      </span>
+                  </div>
+                  <h1 className="text-4xl md:text-6xl font-light tracking-tight text-[var(--text-main)]">
+                     {timeGreeting}.
+                  </h1>
+              </div>
+
+              {/* Minimal Search */}
+              <div className="max-w-2xl mx-auto relative group z-20">
+                 <div className="absolute -inset-1 bg-gradient-to-r from-[var(--primary)] to-purple-500 rounded-full blur opacity-10 group-hover:opacity-20 transition-opacity duration-500"></div>
+                 <form onSubmit={handleSearch} className="relative bg-[var(--bg-card)] rounded-full shadow-sm hover:shadow-md transition-shadow flex items-center p-2 border border-[var(--border)]">
+                    <div className="pl-4 text-[var(--text-muted)]">
+                       <ICONS.Search size={20} />
+                    </div>
+                    <input 
+                       className="flex-1 bg-transparent border-none focus:ring-0 text-lg px-4 font-sans text-[var(--text-main)] placeholder-gray-400 h-12"
+                       placeholder={`Search ${PROVIDER_CONFIG[musicProvider].label}...`}
+                       value={searchQuery}
+                       onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                        <button type="button" onClick={clearSearch} className="p-2 text-gray-400 hover:text-red-500">
+                            <ICONS.Close size={18} />
+                        </button>
+                    )}
+                    <button type="submit" className="bg-[var(--text-main)] text-[var(--bg-main)] rounded-full w-10 h-10 flex items-center justify-center hover:scale-105 transition-transform">
+                       {isSearching ? <ICONS.Loader className="animate-spin" size={18} /> : <ICONS.ArrowRight size={18} />}
+                    </button>
+                 </form>
+              </div>
+
+              {/* Provider Toggles */}
+              <div className="flex justify-center gap-2">
+                 {(Object.keys(PROVIDER_CONFIG) as MusicProvider[]).map((p) => (
+                    <button
                         key={p}
                         onClick={() => onSetMusicProvider(p)}
                         className={`
-                           flex items-center gap-2 px-3 py-2 text-xs font-bold font-mono uppercase transition-all border border-transparent
-                           ${isActive 
-                              ? `bg-black text-white shadow-sm` 
-                              : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'
+                           px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all border
+                           ${musicProvider === p 
+                              ? 'bg-[var(--text-main)] text-[var(--bg-main)] border-[var(--text-main)]' 
+                              : 'bg-transparent text-[var(--text-muted)] border-transparent hover:bg-[var(--bg-hover)]'
                            }
                         `}
-                      >
-                         <config.icon size={14} className={isActive ? 'text-[var(--primary)]' : ''} />
-                         {config.label}
-                      </button>
-                   );
-                })}
-             </div>
-          </div>
+                    >
+                        {PROVIDER_CONFIG[p].label}
+                    </button>
+                 ))}
+              </div>
+           </section>
 
-          {/* Main Search Input */}
-          <form onSubmit={handleSearch} className="relative">
-             <div className={`
-                relative flex items-center bg-[var(--bg-card)] border-4 border-black p-1 transition-all
-                ${isSearching ? 'shadow-none translate-y-[2px]' : 'shadow-retro-lg'}
-             `}>
-                <div className="pl-4 pr-2">
-                   <ICONS.Search size={24} className="text-[var(--text-main)]" strokeWidth={3} />
-                </div>
-                <input 
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`SEARCH ${PROVIDER_CONFIG[musicProvider].label.toUpperCase()} DATABASE...`}
-                  className="w-full bg-transparent border-none py-4 px-2 text-[var(--text-main)] font-mono font-bold placeholder-gray-400 focus:ring-0 text-xl tracking-tight"
-                />
-                
-                {searchQuery && (
-                   <button 
-                     type="button" 
-                     onClick={clearSearch} 
-                     className="p-2 mr-2 text-gray-400 hover:text-red-500 transition-colors"
-                   >
-                     <ICONS.Close size={24} />
-                   </button>
-                )}
-
-                <button 
-                   type="submit"
-                   className="bg-black text-white px-8 py-3 font-bold font-mono text-sm uppercase hover:bg-[var(--primary)] hover:text-black transition-colors border-l-2 border-black"
-                >
-                   {isSearching ? 'SCANNING' : 'GO'}
-                </button>
-             </div>
-          </form>
-          
-          {/* Helper Text */}
-          <div className="mt-2 text-center">
-             <p className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
-                Searching Global Network via {musicProvider}
-             </p>
-          </div>
-      </div>
-
-      {searchPerformed ? (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-           <div className="flex items-center justify-between border-b-2 border-theme pb-4">
-              <h3 className="text-xl font-bold font-mono uppercase text-[var(--text-main)]">
-                 Query Results: "{searchQuery}"
-              </h3>
-              <button onClick={clearSearch} className="text-sm font-bold text-[var(--text-main)] hover:underline decoration-2 underline-offset-4 decoration-[var(--primary)]">CLEAR_FILTER</button>
-           </div>
-           
-           {isSearching ? (
-             <div className="flex justify-center py-12">
-                <div className="flex flex-col items-center gap-4">
-                    <ICONS.Loader className="animate-spin text-[var(--text-main)]" size={40} />
-                    <span className="font-mono font-bold animate-pulse text-[var(--text-main)]">QUERYING_{musicProvider}...</span>
-                </div>
-             </div>
-           ) : searchResults.length > 0 ? (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               {searchResults.map(song => renderSongCard(song, searchResults))}
-             </div>
-           ) : (
-             <div className="text-center py-12 border-2 border-dashed border-gray-400 bg-[var(--bg-hover)]">
-                <p className="font-mono text-gray-500 font-bold">NO_MATCHES_FOUND</p>
-             </div>
-           )}
-        </div>
-      ) : (
-        <>
-          {/* Header Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             {/* User Level Card */}
-             <div className="bg-black text-white p-4 border-2 border-black shadow-retro-sm">
-                <p className="text-[10px] font-mono text-gray-400 uppercase mb-1">Sonic Identity</p>
-                <div className="flex justify-between items-end">
-                   <h3 className="text-2xl font-bold font-mono">LVL.{userLevel}</h3>
-                   <span className="text-xs font-bold text-[var(--primary)]">{getLevelTitle(userLevel)}</span>
-                </div>
-                {/* XP Bar */}
-                <div className="w-full h-1.5 bg-gray-800 mt-2">
-                   <div className="h-full bg-[var(--primary)] transition-all duration-500" style={{ width: `${xp}%` }}></div>
-                </div>
-             </div>
-
-             {/* Streak Card */}
-             <div className="bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm flex flex-col justify-between">
-                <p className="text-[10px] font-mono text-[var(--text-muted)] uppercase">Focus Streak</p>
-                <div className="flex items-center gap-2">
-                   <ICONS.Zap className="text-[var(--primary)]" size={24} fill="currentColor" />
-                   <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">{Math.min(moodData.length, 12)}h</h3>
-                </div>
-             </div>
-
-             {/* Grade Card */}
-             <div className="bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm flex flex-col justify-between relative overflow-hidden">
-                <p className="text-[10px] font-mono text-[var(--text-muted)] uppercase">Rhythm Grade</p>
-                <div className="flex items-end justify-between z-10 relative">
-                   <h3 className="text-4xl font-bold font-mono leading-none text-[var(--text-main)]">{insight?.grade || '-'}</h3>
-                   <span className="text-[10px] font-bold bg-[var(--bg-hover)] text-[var(--text-main)] px-1 border border-theme">daily</span>
-                </div>
-                <div className="absolute -right-4 -bottom-4 text-[var(--bg-hover)] rotate-12 z-0">
-                    <ICONS.Award size={80} />
-                </div>
-             </div>
-
-             {/* Settings Shortcut */}
-             <button 
-                onClick={() => onChangeView(AppView.SETTINGS)}
-                className="bg-[var(--bg-hover)] hover:bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm hover:shadow-retro transition-all group flex flex-col items-center justify-center gap-2"
-             >
-                <ICONS.Settings size={24} className="group-hover:rotate-90 transition-transform duration-500 text-[var(--text-main)]" />
-                <span className="text-xs font-bold font-mono uppercase text-[var(--text-main)]">System Config</span>
-             </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* AI Intelligence Unit */}
-            <div className="lg:col-span-2 space-y-6">
-                
-                {/* Smart Routine Engine */}
-                <div className="bg-[var(--bg-card)] border-2 border-theme p-6 shadow-retro relative">
-                   <div className="absolute top-0 right-0 p-2 bg-black text-white text-[10px] font-mono font-bold uppercase">
-                      Gemini Routine Engine
+           {/* --- CONTENT AREA --- */}
+           {searchPerformed ? (
+               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-500">
+                   <div className="flex items-center justify-between px-2">
+                       <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">Results</h3>
+                       <span className="text-xs text-[var(--text-muted)] font-mono">{searchResults.length} items</span>
                    </div>
                    
-                   <div className="mb-4 pr-12">
-                      <h3 className="text-xl font-bold font-mono uppercase flex items-center gap-2 text-[var(--text-main)]">
-                         <ICONS.Cpu size={20} />
-                         Current State: <span className="text-[var(--primary-hover)] underline decoration-2">{insight?.title || "CALIBRATING..."}</span>
-                      </h3>
-                   </div>
-
-                   {loadingInsight ? (
-                       <div className="h-24 flex items-center gap-4 text-gray-400 font-mono text-xs animate-pulse">
-                          <ICONS.Loader size={20} className="animate-spin" />
-                          ANALYZING_BIOMETRICS_AND_HISTORY...
+                   {searchResults.length > 0 ? (
+                       <div className="bg-[var(--bg-card)]/60 backdrop-blur-xl border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+                           <div className="divide-y divide-[var(--border)]">
+                               {searchResults.map(s => renderSongRow(s, searchResults))}
+                           </div>
                        </div>
                    ) : (
-                       <div className="flex flex-col md:flex-row gap-6">
-                          <div className="flex-1">
-                             <p className="font-mono text-sm leading-relaxed text-[var(--text-muted)] mb-4 border-l-4 border-[var(--bg-hover)] pl-4">
-                                "{insight?.recommendation || "Listen to more music to generate personalized insights."}"
-                             </p>
-                             <div className="flex items-center gap-4 text-xs font-bold font-mono text-[var(--text-muted)]">
-                                <span>SUGGESTED_GENRE: <span className="text-black bg-[var(--primary)] opacity-80 px-1 border border-black">{insight?.nextGenre}</span></span>
-                             </div>
-                          </div>
-                          <div className="flex flex-col gap-2 min-w-[140px]">
-                             <button 
-                               onClick={() => onPlaySong(MOCK_SONGS[2])} // Mock action
-                               className="bg-black text-white py-3 px-4 font-bold font-mono text-xs border-2 border-black hover:bg-white hover:text-black transition-colors shadow-[2px_2px_0_0_var(--primary)] uppercase"
-                             >
-                                {insight?.actionLabel || "OPTIMIZE"}
-                             </button>
-                             <button onClick={refreshInsights} className="text-[10px] font-bold text-gray-400 hover:text-[var(--text-main)] underline uppercase">
-                                Refresh Analysis
-                             </button>
-                          </div>
+                       <div className="text-center py-20 opacity-50">
+                           <p className="font-mono text-sm">No results found.</p>
                        </div>
                    )}
-                </div>
-
-                {/* Mood Chart */}
-                <div className="bg-[var(--bg-card)] border-2 border-theme p-6 shadow-retro">
-                  <div className="flex items-center justify-between mb-6">
-                     <h3 className="text-lg font-bold flex items-center space-x-2 font-mono uppercase text-[var(--text-main)]">
-                       <ICONS.Chart size={20} strokeWidth={2.5} />
-                       <span>Biometric_Flow</span>
-                     </h3>
-                     <div className="flex gap-2">
-                        {['Today', 'Week'].map(range => (
-                            <button key={range} className="text-xs font-mono font-bold border border-theme text-[var(--text-main)] px-2 py-1 hover:bg-[var(--text-main)] hover:text-[var(--bg-main)] transition-colors uppercase">
-                                {range}
-                            </button>
-                        ))}
-                     </div>
-                  </div>
-                  {moodData.length > 1 ? (
-                     <MoodChart data={moodData} />
-                  ) : (
-                     <div className="h-48 flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300">
-                        <p className="font-mono text-gray-400 text-sm">INSUFFICIENT_DATA</p>
-                     </div>
-                  )}
-                </div>
-            </div>
-
-            {/* Quick Actions / Context */}
-            <div className="space-y-6">
-               <VibeSnap onPlaylistGenerated={(songs) => onPlaySong(songs[0], songs)} spotifyToken={spotifyToken} musicProvider={musicProvider} />
-
-               {/* Focus Mode Promo */}
-               <div 
-                 onClick={() => onChangeView(AppView.FOCUS)}
-                 className="bg-[var(--bg-hover)] border-2 border-theme p-6 cursor-pointer hover:bg-black hover:text-white transition-colors group relative overflow-hidden"
-               > 
-                  <ICONS.Code className="absolute -right-4 -bottom-4 text-[var(--bg-card)] group-hover:text-gray-800 transition-colors" size={100} />
-                  <h3 className="text-lg font-bold font-mono uppercase mb-1 relative z-10 text-[var(--text-main)] group-hover:text-white">Deep Work Mode</h3>
-                  <p className="text-xs font-mono opacity-70 relative z-10 text-[var(--text-muted)] group-hover:text-gray-300">Eliminate distractions. Timer + Ambient Audio.</p>
-                  <div className="mt-4 flex items-center gap-2 text-xs font-bold font-mono relative z-10 text-[var(--primary)]">
-                     <span>ENTER_SESSION</span>
-                     <ICONS.ArrowRight size={14} />
-                  </div>
                </div>
+           ) : (
+               <div className="space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                   
+                   {/* Insight Section */}
+                   <section className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                       <div className="lg:col-span-3 bg-[var(--bg-card)]/60 backdrop-blur-xl border border-[var(--border)] rounded-3xl p-8 flex flex-col justify-center relative overflow-hidden group">
+                           <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                               <ICONS.MessageSquare size={80} />
+                           </div>
+                           
+                           <div className="relative z-10">
+                               <span className="text-xs font-bold font-mono text-[var(--primary)] uppercase tracking-widest mb-3 block">
+                                   {insight?.title || "ANALYZING_PATTERNS..."}
+                               </span>
+                               <h2 className="text-2xl md:text-3xl font-serif italic leading-relaxed text-[var(--text-main)] mb-6">
+                                  "{insight?.recommendation || "Loading your personalized insights..."}"
+                               </h2>
+                               
+                               <div className="flex items-center gap-4">
+                                   <button 
+                                     onClick={() => onPlaySong(MOCK_SONGS[0])}
+                                     className="px-6 py-2.5 bg-[var(--text-main)] text-[var(--bg-main)] rounded-full text-xs font-bold uppercase tracking-wide hover:opacity-80 transition-opacity"
+                                   >
+                                       {insight?.actionLabel || "Play Flow"}
+                                   </button>
+                                   <button onClick={refreshInsights} disabled={loadingInsight} className="p-2 rounded-full hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-muted)]">
+                                       <ICONS.Loader className={loadingInsight ? 'animate-spin' : ''} size={16} />
+                                   </button>
+                               </div>
+                           </div>
+                       </div>
 
-               {/* Recent/Recommended Mini List */}
-               <div className="bg-[var(--bg-card)] border-2 border-theme p-4">
-                  <h3 className="text-xs font-bold font-mono uppercase mb-4 border-b-2 border-theme pb-2 text-[var(--text-main)]">Quick Picks</h3>
-                  <div className="space-y-3">
-                     {MOCK_SONGS.slice(0, 3).map((song, i) => (
-                        <div key={i} className="flex items-center gap-3 group cursor-pointer" onClick={() => onPlaySong(song)}>
-                           <div className="w-8 h-8 bg-gray-200 border border-black relative">
-                              <img src={song.coverUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0" alt="cover" />
+                       <div className="lg:col-span-2 bg-[var(--bg-card)]/40 backdrop-blur-md border border-[var(--border)] rounded-3xl p-6 flex flex-col justify-between">
+                           <div className="flex justify-between items-center mb-4">
+                               <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Energy Flow</span>
+                               <span className="text-xs font-mono font-bold">{insight?.grade || 'A'}</span>
                            </div>
-                           <div className="min-w-0">
-                              <div className="text-xs font-bold truncate text-[var(--text-main)] group-hover:text-[var(--primary)] transition-colors">{song.title}</div>
-                              <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">{song.artist}</div>
+                           <div className="flex-1 min-h-[120px]">
+                               {moodData.length > 1 ? (
+                                   <MoodChart data={moodData} />
+                               ) : (
+                                   <div className="h-full flex items-center justify-center text-[var(--text-muted)] text-xs font-mono">
+                                       Gathering Data...
+                                   </div>
+                               )}
                            </div>
-                        </div>
-                     ))}
-                  </div>
+                       </div>
+                   </section>
+
+                   {/* Quick Picks */}
+                   <section>
+                       <div className="flex items-center justify-between mb-6 px-2">
+                           <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">Suggested</h3>
+                       </div>
+                       
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           {MOCK_SONGS.slice(0, 4).map((song, i) => (
+                               <div 
+                                 key={song.id} 
+                                 onClick={() => onPlaySong(song)}
+                                 className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-sm hover:shadow-xl transition-all duration-500"
+                               >
+                                   <img src={song.coverUrl} alt="cover" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                                   
+                                   <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
+                                       <h4 className="text-white font-bold text-sm truncate">{song.title}</h4>
+                                       <p className="text-white/70 text-xs truncate">{song.artist}</p>
+                                   </div>
+                                   
+                                   <div className="absolute top-3 right-3 w-8 h-8 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-[-10px] group-hover:translate-y-0 text-white">
+                                       <ICONS.Play size={12} fill="currentColor" />
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   </section>
+
+                   {/* Tools Grid */}
+                   <section className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                       <button 
+                         onClick={() => onChangeView(AppView.FOCUS)}
+                         className="p-6 rounded-3xl bg-[var(--bg-card)]/40 border border-[var(--border)] hover:bg-[var(--text-main)] hover:text-[var(--bg-main)] transition-all group text-left"
+                       >
+                           <ICONS.Zap size={24} className="mb-4 text-[var(--primary)] group-hover:text-[var(--bg-main)]" />
+                           <h4 className="font-bold text-sm">Focus Mode</h4>
+                           <p className="text-xs opacity-60 mt-1">Deep work timer & ambience.</p>
+                       </button>
+                       <button 
+                         onClick={() => onChangeView(AppView.LAB)}
+                         className="p-6 rounded-3xl bg-[var(--bg-card)]/40 border border-[var(--border)] hover:bg-[var(--text-main)] hover:text-[var(--bg-main)] transition-all group text-left"
+                       >
+                           <ICONS.Sliders size={24} className="mb-4 text-[var(--primary)] group-hover:text-[var(--bg-main)]" />
+                           <h4 className="font-bold text-sm">Sonic Lab</h4>
+                           <p className="text-xs opacity-60 mt-1">Experimental audio tools.</p>
+                       </button>
+                       <button 
+                         onClick={() => onChangeView(AppView.OFFLINE)}
+                         className="p-6 rounded-3xl bg-[var(--bg-card)]/40 border border-[var(--border)] hover:bg-[var(--text-main)] hover:text-[var(--bg-main)] transition-all group text-left col-span-2 md:col-span-1"
+                       >
+                           <ICONS.DownloadCloud size={24} className="mb-4 text-[var(--primary)] group-hover:text-[var(--bg-main)]" />
+                           <h4 className="font-bold text-sm">Offline Hub</h4>
+                           <p className="text-xs opacity-60 mt-1">Your local collection.</p>
+                       </button>
+                   </section>
+
                </div>
-            </div>
-          </div>
-        </>
-      )}
+           )}
+        </div>
+      </div>
     </div>
   );
 };

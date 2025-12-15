@@ -1,26 +1,35 @@
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Tool } from '@google/genai';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
 
 interface UseLiveSessionProps {
-  onTranscript?: (text: string, isUser: boolean) => void;
   systemInstruction?: string;
   tools?: Tool[];
   onToolCall?: (functionCalls: any[]) => void;
 }
 
-export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolCall }: UseLiveSessionProps) => {
+export interface TranscriptItem {
+    role: 'user' | 'model';
+    text: string;
+    isFinal: boolean;
+}
+
+export const useLiveSession = ({ systemInstruction, tools, onToolCall }: UseLiveSessionProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false); 
   const [volume, setVolume] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const isMutedRef = useRef(false);
+  
+  // Transcript State
+  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
+  const currentTranscriptRef = useRef<{ role: 'user' | 'model', text: string }>({ role: 'user', text: '' });
 
   // Connection State Ref (to avoid stale closures in callbacks)
   const isConnectedRef = useRef(false);
   // Callback Refs
-  const onTranscriptRef = useRef(onTranscript);
   const onToolCallRef = useRef(onToolCall);
 
   // Audio Refs
@@ -45,9 +54,8 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
   const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    onTranscriptRef.current = onTranscript;
     onToolCallRef.current = onToolCall;
-  }, [onTranscript, onToolCall]);
+  }, [onToolCall]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -57,9 +65,9 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
     });
   }, []);
 
-  const sendToolResponse = useCallback((functionResponses: any) => {
+  const sendToolResponse = useCallback((response: any) => {
      if (sessionRef.current) {
-        sessionRef.current.sendToolResponse({ functionResponses });
+        sessionRef.current.sendToolResponse(response);
      }
   }, []);
 
@@ -124,10 +132,12 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
         if (!navigator.mediaDevices.getDisplayMedia) {
            throw new Error("Screen sharing is not supported on this device/browser.");
         }
+        // Higher quality constraints for screen sharing
         stream = await navigator.mediaDevices.getDisplayMedia({ 
             video: { 
-                width: { ideal: 1280 }, 
-                height: { ideal: 720 } 
+                width: { ideal: 1920 }, 
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 }
             } 
         });
       }
@@ -158,8 +168,13 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
           if (video.readyState < 2) return;
 
           const canvas = videoCanvasRef.current;
-          // Scale down to avoid huge payloads - 640px width max
-          const scale = Math.min(1, 640 / (video.videoWidth || 640));
+          
+          // Scale logic: Higher resolution for screen sharing to ensure text readability
+          // Camera: max 640px width (good balance for face/objects).
+          // Screen: max 1920px width (better for readability).
+          const maxWidth = mode === 'screen' ? 1920 : 640;
+          const scale = Math.min(1, maxWidth / (video.videoWidth || 1));
+          
           canvas.width = (video.videoWidth || 640) * scale;
           canvas.height = (video.videoHeight || 480) * scale;
           
@@ -237,7 +252,6 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
       cancelAnimationFrame(animationFrameRef.current);
     }
     
-    // Explicitly set sessionRef to null immediately to stop any pending sends
     if (sessionRef.current) {
        try {
          sessionRef.current.close();
@@ -253,6 +267,7 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
     setVolume(0);
     setIsMuted(false);
     isMutedRef.current = false;
+    setTranscripts([]);
   }, [stopVideo]);
 
   const connect = useCallback(async () => {
@@ -347,13 +362,39 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
                 onToolCallRef.current?.(msg.toolCall.functionCalls);
              }
 
-             if (msg.serverContent?.outputTranscription?.text) {
-                onTranscriptRef.current?.(msg.serverContent.outputTranscription.text, false);
-             }
-             if (msg.serverContent?.inputTranscription?.text) {
-                onTranscriptRef.current?.(msg.serverContent.inputTranscription.text, true);
+             // Handle Transcription
+             if (msg.serverContent?.outputTranscription) {
+                 const text = msg.serverContent.outputTranscription.text;
+                 currentTranscriptRef.current = { role: 'model', text: (currentTranscriptRef.current.role === 'model' ? currentTranscriptRef.current.text : '') + text };
+                 setTranscripts(prev => {
+                     const last = prev[prev.length - 1];
+                     if (last && last.role === 'model' && !last.isFinal) {
+                         return [...prev.slice(0, -1), { role: 'model', text: currentTranscriptRef.current.text, isFinal: false }];
+                     }
+                     return [...prev, { role: 'model', text: currentTranscriptRef.current.text, isFinal: false }];
+                 });
+             } else if (msg.serverContent?.inputTranscription) {
+                 const text = msg.serverContent.inputTranscription.text;
+                 currentTranscriptRef.current = { role: 'user', text: (currentTranscriptRef.current.role === 'user' ? currentTranscriptRef.current.text : '') + text };
+                 setTranscripts(prev => {
+                     const last = prev[prev.length - 1];
+                     if (last && last.role === 'user' && !last.isFinal) {
+                         return [...prev.slice(0, -1), { role: 'user', text: currentTranscriptRef.current.text, isFinal: false }];
+                     }
+                     return [...prev, { role: 'user', text: currentTranscriptRef.current.text, isFinal: false }];
+                 });
              }
 
+             if (msg.serverContent?.turnComplete) {
+                 setTranscripts(prev => {
+                     const last = prev[prev.length - 1];
+                     if (last) return [...prev.slice(0, -1), { ...last, isFinal: true }];
+                     return prev;
+                 });
+                 currentTranscriptRef.current = { role: 'user', text: '' }; // Reset
+             }
+
+             // Handle Audio Output
              const base64Audio = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
              if (base64Audio && audioContextRef.current && analyserRef.current) {
                setIsSpeaking(true);
@@ -397,11 +438,19 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
           },
           onerror: (err) => {
             console.error("Live session error", err);
-            // Handle specific network errors
             const errMsg = err instanceof Error ? err.message : String(err);
-            // Don't show error if we intentionally disconnected
+            const lowerMsg = errMsg.toLowerCase();
+            
             if (isConnectedRef.current) {
-                setError(errMsg.includes('unavailable') ? "Service Unavailable (Try again)" : `Error: ${errMsg}`);
+                if (
+                    !lowerMsg.includes("network") && 
+                    !lowerMsg.includes("close") &&
+                    !lowerMsg.includes("aborted") &&
+                    !lowerMsg.includes("failed to fetch") &&
+                    !lowerMsg.includes("undefined")
+                ) {
+                    setError(`Error: ${errMsg}`);
+                }
             }
             setIsConnected(false);
             isConnectedRef.current = false;
@@ -414,8 +463,8 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
           },
           systemInstruction: systemInstruction || defaultSystemInstruction,
           tools: tools,
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
+          inputAudioTranscription: {}, // Empty object to enable defaults
+          outputAudioTranscription: {}, // Empty object to enable defaults
         }
       });
       
@@ -459,6 +508,7 @@ export const useLiveSession = ({ onTranscript, systemInstruction, tools, onToolC
     videoStream: videoStreamRef.current,
     toggleMute,
     isMuted,
-    sendToolResponse
+    sendToolResponse,
+    transcripts // Exposed for UI
   };
 };

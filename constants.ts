@@ -53,7 +53,18 @@ import {
   ArrowUp,
   ArrowDown,
   Plus,
-  Activity
+  Activity,
+  Rocket,
+  Eye,
+  BookOpen,
+  CheckCircle,
+  Key,
+  Trees,
+  Flame,
+  Moon,
+  Disc,
+  Waves,
+  Smile
 } from 'lucide-react';
 
 export const ICONS = {
@@ -105,6 +116,7 @@ export const ICONS = {
   Power,
   Game: Gamepad2,
   Offline: HardDrive,
+  HardDrive,
   DownloadCloud: CloudDownload,
   FileAudio,
   Trash: Trash2,
@@ -112,7 +124,18 @@ export const ICONS = {
   ArrowUp,
   ArrowDown,
   Plus,
-  Activity
+  Activity,
+  Rocket,
+  Eye,
+  BookOpen,
+  CheckCircle,
+  Key,
+  Trees,
+  Flame,
+  Moon,
+  Disc,
+  Waves,
+  Smile
 };
 
 export const MOCK_SONGS: any[] = [

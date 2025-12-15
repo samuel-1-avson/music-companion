@@ -1,466 +1,173 @@
-import React, { useState, useEffect } from 'react';
+
+import React from 'react';
 import { ICONS } from '../constants';
-import { getSpotifyAuthUrl } from '../services/spotifyService';
-import { SpotifyProfile, Theme, MusicProvider } from '../types';
+import { Theme } from '../types';
 
 interface SettingsProps {
-  spotifyToken: string | null;
-  spotifyProfile?: SpotifyProfile | null;
-  onDisconnect: () => void;
   currentTheme: Theme;
   onSetTheme: (t: Theme) => void;
-  musicProvider: MusicProvider;
-  onSetMusicProvider: (p: MusicProvider) => void;
+  isSmartTheme: boolean;
+  onToggleSmartTheme: () => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({ 
-    spotifyToken, 
-    spotifyProfile, 
-    onDisconnect, 
     currentTheme, 
     onSetTheme,
-    musicProvider,
-    onSetMusicProvider
+    isSmartTheme,
+    onToggleSmartTheme
 }) => {
-  const [clientId, setClientId] = useState('');
-  const [redirectUri, setRedirectUri] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [connectPhase, setConnectPhase] = useState<'idle' | 'saving' | 'redirecting'>('idle');
-  const [isSaved, setIsSaved] = useState(false);
-  const [showManualCheck, setShowManualCheck] = useState(false);
   
-  // Manual Token State
-  const [manualToken, setManualToken] = useState('');
-  const [showManualEntry, setShowManualEntry] = useState(false);
-
-  // Edit URI State
-  const [isEditingUri, setIsEditingUri] = useState(false);
-
-  useEffect(() => {
-    // Load saved client ID
-    const savedId = localStorage.getItem('spotify_client_id');
-    if (savedId) {
-        setClientId(savedId);
-        setIsSaved(true);
-    }
-
-    // Load saved URI or auto-detect
-    const savedUri = localStorage.getItem('spotify_redirect_uri');
-    if (savedUri) {
-        setRedirectUri(savedUri);
-    } else {
-        let url = window.location.href.split('#')[0];
-        if (url.endsWith('/')) {
-            url = url.slice(0, -1);
-        }
-        setRedirectUri(url);
-    }
-  }, []);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(redirectUri);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleConnect = async () => {
-    if (!clientId) return;
-    
-    setConnectPhase('saving');
-    
-    // Save Config
-    localStorage.setItem('spotify_client_id', clientId);
-    localStorage.setItem('spotify_redirect_uri', redirectUri);
-    
-    // Visual delay to show "Saving" state
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setIsSaved(true);
-
-    setConnectPhase('redirecting');
-    
-    // Visual delay to show "Redirecting" state
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    const url = getSpotifyAuthUrl(clientId, redirectUri);
-    
-    // FORCE NEW TAB: This avoids the "Refused to connect" X-Frame-Options error
-    window.open(url, '_blank', 'width=600,height=800');
-    
-    setConnectPhase('idle');
-    setShowManualCheck(true);
-  };
-
-  const checkConnection = () => {
-     // Manually trigger a check of local storage
-     const token = localStorage.getItem('spotify_token');
-     if (token) {
-        window.dispatchEvent(new Event('storage')); // Force update in App.tsx
-        window.location.reload(); 
-     } else {
-        alert("No token found yet. Please complete the login in the popup window.");
-     }
-  };
-
-  const handleManualTokenSave = () => {
-    if (!manualToken.trim()) return;
-    // Basic validation
-    localStorage.setItem('spotify_token', manualToken.trim());
-    window.dispatchEvent(new Event('storage'));
-    window.location.reload();
-  };
-
-  const resetUri = () => {
-    let url = window.location.href.split('#')[0];
-    if (url.endsWith('/')) url = url.slice(0, -1);
-    setRedirectUri(url);
-    localStorage.removeItem('spotify_redirect_uri');
-    setIsEditingUri(false);
-  };
-
-  const isInsecure = redirectUri.startsWith('http://') && !redirectUri.includes('localhost') && !redirectUri.includes('127.0.0.1');
-  const isConnecting = connectPhase !== 'idle';
-  
-  const themes: { id: Theme; label: string; bg: string; color: string }[] = [
-      { id: 'minimal', label: 'Minimal', bg: '#ffffff', color: '#18181b' },
-      { id: 'classic', label: 'Classic', bg: '#fcfbf9', color: '#fb923c' },
-      { id: 'cyber', label: 'Cyber', bg: '#09090b', color: '#22d3ee' },
-      { id: 'forest', label: 'Forest', bg: '#f0fdf4', color: '#4ade80' },
-      { id: 'lavender', label: 'Lavender', bg: '#faf5ff', color: '#d8b4fe' }
-  ];
-
-  const cycleTheme = () => {
-    const currentIndex = themes.findIndex(t => t.id === currentTheme);
-    const nextIndex = (currentIndex + 1) % themes.length;
-    onSetTheme(themes[nextIndex].id);
-  };
-
-  const providers: { id: MusicProvider; label: string; icon: any }[] = [
-      { id: 'SPOTIFY', label: 'Spotify', icon: ICONS.Music },
-      { id: 'YOUTUBE', label: 'YouTube', icon: ICONS.Play },
-      { id: 'APPLE', label: 'Apple Music', icon: ICONS.Radio },
-      { id: 'DEEZER', label: 'Deezer', icon: ICONS.Activity }, // Using Activity for Deezer pulse
+  const themes: { id: Theme; label: string; bg: string; color: string; tags: string[] }[] = [
+      { id: 'minimal', label: 'Minimal', bg: '#ffffff', color: '#18181b', tags: ['Focus', 'Clean'] },
+      { id: 'classic', label: 'Classic', bg: '#fcfbf9', color: '#fb923c', tags: ['Retro', 'Light'] },
+      { id: 'solar', label: 'Solar', bg: '#fff7ed', color: '#f97316', tags: ['Warm', 'Energy'] },
+      { id: 'forest', label: 'Forest', bg: '#f0fdf4', color: '#4ade80', tags: ['Nature', 'Fresh'] },
+      { id: 'glacier', label: 'Glacier', bg: '#f0f9ff', color: '#38bdf8', tags: ['Cool', 'Calm'] },
+      { id: 'lavender', label: 'Lavender', bg: '#faf5ff', color: '#d8b4fe', tags: ['Soft', 'Creative'] },
+      { id: 'sakura', label: 'Sakura', bg: '#fff1f2', color: '#fb7185', tags: ['Pink', 'Gentle'] },
+      { id: 'cyber', label: 'Cyber', bg: '#09090b', color: '#22d3ee', tags: ['Dark', 'Tech'] },
+      { id: 'midnight', label: 'Midnight', bg: '#0f172a', color: '#38bdf8', tags: ['Deep', 'Blue'] },
+      { id: 'obsidian', label: 'Obsidian', bg: '#050505', color: '#ffffff', tags: ['OLED', 'Focus'] },
+      { id: 'matrix', label: 'Matrix', bg: '#000000', color: '#00ff41', tags: ['Hacker', 'Green'] },
+      { id: 'terminal', label: 'Terminal', bg: '#0c0c0c', color: '#10b981', tags: ['Code', 'Mono'] },
+      { id: 'synthwave', label: 'Synthwave', bg: '#2e022d', color: '#f0abfc', tags: ['Neon', 'Vibe'] },
+      { id: 'nebula', label: 'Nebula', bg: '#1e1b4b', color: '#f472b6', tags: ['Space', 'Dream'] },
+      { id: 'oceanic', label: 'Oceanic', bg: '#042f2e', color: '#2dd4bf', tags: ['Teal', 'Deep'] },
+      { id: 'ember', label: 'Ember', bg: '#1c1917', color: '#ef4444', tags: ['Intense', 'Red'] },
+      { id: 'sunset', label: 'Sunset', bg: '#4a0d0d', color: '#fbbf24', tags: ['Warm', 'Dark'] },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto p-8 space-y-8 pb-32">
-      <div>
-        <h2 className="text-4xl font-bold text-[var(--text-main)] mb-2 font-mono border-b-4 border-theme inline-block">SETTINGS</h2>
-        <p className="text-[var(--text-muted)] font-mono mt-2">SYSTEM_CONFIGURATION</p>
+    <div className="max-w-5xl mx-auto p-8 space-y-12 pb-32 animate-in slide-in-from-bottom-4">
+      
+      {/* Header */}
+      <div className="flex items-end justify-between border-b-4 border-theme pb-4">
+        <div>
+            <h2 className="text-4xl font-bold text-[var(--text-main)] mb-2 font-mono">SETTINGS</h2>
+            <p className="text-[var(--text-muted)] font-mono">SYSTEM_CONFIGURATION_&_PREFERENCES</p>
+        </div>
+        <div className="text-[10px] font-mono text-[var(--text-muted)] text-right">
+            <p>BUILD_VER: 2.5.0</p>
+            <p>STATUS: OPTIMAL</p>
+        </div>
       </div>
       
-      {/* Theme Selector */}
-      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
-          <div className="flex items-center justify-between border-b-2 border-theme pb-4 mb-6">
-             <div className="flex items-center space-x-4">
-                 <div className="bg-[var(--primary)] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
-                    <ICONS.Image size={24} className="text-[var(--text-main)]" />
-                 </div>
-                 <div>
-                    <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">UI_THEME</h3>
-                    <p className="text-xs text-[var(--text-muted)] font-mono">Select your visual interface.</p>
-                 </div>
-             </div>
-             <button 
-               onClick={cycleTheme}
-               className="flex items-center gap-2 px-4 py-2 border-2 border-theme bg-[var(--bg-hover)] text-[var(--text-main)] font-mono text-xs font-bold uppercase hover:bg-[var(--primary)] hover:text-black transition-colors shadow-retro-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px]"
-             >
-                <ICONS.Sliders size={14} />
-                Cycle Theme
-             </button>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {themes.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => onSetTheme(t.id)}
-                    className={`relative p-4 border-2 transition-all group overflow-hidden ${currentTheme === t.id ? 'border-theme ring-2 ring-[var(--primary)] shadow-retro-sm' : 'border-gray-200 hover:border-theme'}`}
-                    style={{ backgroundColor: t.bg }}
-                  >
-                      <div className="flex flex-col items-center gap-2 relative z-10">
-                          <div className="w-8 h-8 rounded-full border-2 border-black" style={{ backgroundColor: t.color }}></div>
-                          <span className="font-bold font-mono text-xs uppercase" style={{ color: t.id === 'cyber' ? '#fff' : '#000' }}>{t.label}</span>
-                      </div>
-                      {currentTheme === t.id && (
-                          <div className="absolute top-2 right-2 text-[var(--text-main)]">
-                              <ICONS.Check size={16} />
-                          </div>
-                      )}
-                  </button>
-              ))}
-          </div>
-      </div>
-
-      {/* Music Provider Selector */}
-      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
-          <div className="flex items-center space-x-4 border-b-2 border-theme pb-4 mb-6">
-             <div className="bg-black text-white border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
-                <ICONS.Music size={24} />
-             </div>
-             <div>
-                <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">MUSIC_SOURCE</h3>
-                <p className="text-xs text-[var(--text-muted)] font-mono">Select default search & playback provider.</p>
-             </div>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {providers.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => onSetMusicProvider(p.id)}
-                    className={`p-4 border-2 transition-all flex flex-col items-center gap-3 relative ${
-                        musicProvider === p.id 
-                        ? 'border-theme bg-[var(--bg-hover)] shadow-retro-sm' 
-                        : 'border-gray-200 hover:border-theme'
-                    }`}
-                  >
-                      <p.icon size={32} className={musicProvider === p.id ? 'text-[var(--primary)]' : 'text-gray-400'} />
-                      <span className="font-bold font-mono text-sm uppercase text-[var(--text-main)]">{p.label}</span>
-                      {musicProvider === p.id && (
-                          <div className="absolute top-2 right-2 text-[var(--primary)]">
-                              <ICONS.Check size={16} />
-                          </div>
-                      )}
-                  </button>
-              ))}
-          </div>
-          
-          {musicProvider === 'SPOTIFY' && !spotifyToken && (
-              <div className="mt-4 p-2 bg-red-100 border border-red-500 text-red-700 text-xs font-mono font-bold text-center">
-                  WARNING: SPOTIFY REQUIRES LOGIN BELOW.
+      {/* Smart Theme Toggle */}
+      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-start gap-4">
+              <div className={`p-3 border-2 border-theme ${isSmartTheme ? 'bg-[var(--primary)] text-black' : 'bg-[var(--bg-hover)] text-[var(--text-muted)]'}`}>
+                  <ICONS.Cpu size={32} />
               </div>
-          )}
+              <div>
+                  <h3 className="text-xl font-bold font-mono text-[var(--text-main)] uppercase">Smart Adaptation</h3>
+                  <p className="text-xs text-[var(--text-muted)] font-mono mt-1 max-w-md leading-relaxed">
+                      Enable the AI to automatically switch UI themes based on your current activity (Arcade, Lab, Focus) and the mood of the music playing.
+                  </p>
+              </div>
+          </div>
+          <button 
+            onClick={onToggleSmartTheme}
+            className={`
+                relative w-20 h-10 border-2 border-theme transition-colors duration-300
+                ${isSmartTheme ? 'bg-[var(--primary)]' : 'bg-[var(--bg-hover)]'}
+            `}
+          >
+              <div className={`
+                  absolute top-1 bottom-1 w-7 bg-white border-2 border-black transition-transform duration-300
+                  ${isSmartTheme ? 'left-[calc(100%-2rem-4px)]' : 'left-1'}
+              `}></div>
+          </button>
       </div>
 
-      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 space-y-8 shadow-retro">
-        <div className="flex items-center justify-between border-b-2 border-theme pb-4">
-          <div className="flex items-center space-x-4">
-            <div className="bg-[#1DB954] border-2 border-theme p-2 flex items-center justify-center shadow-retro-sm">
-               <ICONS.Music size={24} className="text-black" />
-            </div>
-            <div>
-               <h3 className="text-2xl font-bold font-mono text-[var(--text-main)]">SPOTIFY_LINK</h3>
-               <p className="text-xs text-[var(--text-muted)] font-mono">Required only if using Spotify Provider.</p>
-            </div>
+      {/* Appearance Section */}
+      <div>
+          <div className="flex items-center gap-2 mb-6">
+              <ICONS.Eye className="text-[var(--primary)]" size={20} />
+              <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">Visual Interface</h3>
           </div>
-          {spotifyToken && (
-             <div className="bg-green-100 text-green-800 px-3 py-1 font-bold font-mono text-sm border-2 border-green-600">
-                ACTIVE
-             </div>
-          )}
-        </div>
-
-        {spotifyToken ? (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="bg-green-50 border-2 border-green-600 p-6 shadow-retro-sm">
-                <div className="flex items-start justify-between">
-                   <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 border-2 border-black rounded-full overflow-hidden bg-gray-200">
-                         {spotifyProfile?.images?.[0]?.url ? (
-                            <img src={spotifyProfile.images[0].url} alt="Avatar" className="w-full h-full object-cover" />
-                         ) : (
-                            <div className="w-full h-full flex items-center justify-center"><ICONS.User /></div>
-                         )}
+          
+          <div className={`bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro transition-opacity duration-300 ${isSmartTheme ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+              {isSmartTheme && (
+                  <div className="absolute inset-0 flex items-center justify-center z-20">
+                      <div className="bg-black/80 text-white px-6 py-3 font-mono font-bold text-sm uppercase backdrop-blur-sm border-2 border-white shadow-xl">
+                          Smart Mode Active
                       </div>
-                      <div>
-                         <p className="text-xs font-bold text-green-800 font-mono uppercase mb-1">Authenticated As</p>
-                         <h4 className="text-xl font-bold text-black">{spotifyProfile?.display_name || "Spotify User"}</h4>
-                         <p className="text-sm text-gray-600">{spotifyProfile?.email}</p>
-                      </div>
-                   </div>
-                   <button 
-                    onClick={onDisconnect}
-                    className="text-sm font-bold text-red-600 hover:text-white hover:bg-red-600 border-2 border-transparent hover:border-black px-3 py-1 transition-all"
-                   >
-                    DISCONNECT_SESSION
-                   </button>
-                </div>
-             </div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-             {/* Step 1 */}
-             <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-bold text-xl flex-shrink-0 shadow-retro-sm border-2 border-white outline outline-2 outline-black">1</div>
-                <div className="flex-1 space-y-3">
-                   <div className="flex justify-between items-start">
-                       <div>
-                         <h4 className="font-bold text-lg text-[var(--text-main)]">Set Redirect URI</h4>
-                         <p className="text-sm text-[var(--text-muted)]">
-                            Add this <strong>EXACTLY</strong> to your <a href="https://developer.spotify.com/dashboard" target="_blank" className="font-bold underline hover:text-[var(--primary)] inline-flex items-center">Spotify Dashboard <ICONS.ExternalLink size={12} className="ml-1" /></a>.
-                         </p>
-                       </div>
-                       {!isEditingUri ? (
-                         <button onClick={() => setIsEditingUri(true)} className="text-xs text-blue-600 underline font-mono">EDIT</button>
-                       ) : (
-                         <button onClick={resetUri} className="text-xs text-red-500 underline font-mono">RESET</button>
-                       )}
-                   </div>
-
-                   <div className="flex items-center gap-2">
-                      {isEditingUri ? (
-                        <input 
-                          type="text" 
-                          value={redirectUri} 
-                          onChange={(e) => setRedirectUri(e.target.value)}
-                          className="flex-1 bg-[var(--bg-card)] border-2 border-theme text-[var(--text-main)] p-3 font-mono text-sm focus:outline-none focus:shadow-retro"
-                        />
-                      ) : (
-                        <code className="flex-1 bg-[var(--bg-hover)] border-2 border-theme text-[var(--text-main)] p-3 font-mono text-sm truncate block">
-                            {redirectUri}
-                        </code>
-                      )}
-                      
-                      <button 
-                        onClick={handleCopy}
-                        className={`p-3 border-2 border-theme transition-all ${copied ? 'bg-green-500 text-white' : 'bg-[var(--bg-card)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'}`}
-                        title="Copy to Clipboard"
-                      >
-                         {copied ? <ICONS.Check size={20} /> : <ICONS.Copy size={20} />}
-                      </button>
-                   </div>
-                   
-                   {isInsecure && (
-                      <div className="flex items-start space-x-2 text-red-600 bg-red-50 p-2 border border-red-200">
-                         <ICONS.Close size={16} className="mt-0.5 flex-shrink-0" />
-                         <p className="text-xs font-bold font-mono">
-                            WARNING: 'http' URI detected. Spotify usually requires 'https' for Redirect URIs unless using localhost. Try editing the URI to 'https' if your environment supports it.
-                         </p>
-                      </div>
-                   )}
-                </div>
-             </div>
-
-             {/* Step 2 */}
-             <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-bold text-xl flex-shrink-0 shadow-retro-sm border-2 border-white outline outline-2 outline-black">2</div>
-                <div className="flex-1 space-y-3">
-                   <h4 className="font-bold text-lg text-[var(--text-main)]">Enter Client ID</h4>
-                   <p className="text-sm text-[var(--text-muted)]">
-                      Paste the <strong>Client ID</strong> from your Spotify App here.
-                   </p>
-                   <div className="relative">
-                      <input 
-                        type="text" 
-                        value={clientId}
-                        onChange={(e) => {
-                           setClientId(e.target.value);
-                           setIsSaved(false);
-                        }}
-                        disabled={isConnecting}
-                        className="w-full bg-[var(--bg-card)] border-2 border-theme px-4 py-3 text-[var(--text-main)] focus:shadow-retro focus:outline-none transition-all font-mono placeholder-gray-400 disabled:bg-gray-100 disabled:text-gray-500"
-                        placeholder="e.g. 8a93b2..."
-                      />
-                      {clientId.length > 25 && (
-                         <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors ${isSaved ? 'text-green-600 scale-110' : 'text-gray-400'}`}>
-                            <ICONS.Check size={20} strokeWidth={isSaved ? 3 : 2} />
-                         </div>
-                      )}
-                   </div>
-                   {isSaved && (
-                      <div className="mt-2 w-full bg-green-100 border-2 border-green-500 p-2 flex items-center justify-center space-x-2 animate-in fade-in zoom-in duration-300">
-                         <ICONS.Check size={16} className="text-green-600" strokeWidth={3} />
-                         <span className="text-xs font-bold font-mono text-green-800">CLIENT ID SECURELY SAVED</span>
-                      </div>
-                   )}
-                </div>
-             </div>
-
-             <div className="pt-4 border-t-2 border-theme">
-               <button 
-                 onClick={handleConnect}
-                 disabled={!clientId || isConnecting}
-                 className={`w-full py-4 font-bold border-2 border-theme shadow-retro transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none flex items-center justify-center space-x-2 font-mono uppercase text-lg relative overflow-hidden ${
-                   clientId && !isConnecting
-                     ? 'bg-[#1DB954] text-black hover:bg-[#1ed760]' 
-                     : (isConnecting ? 'bg-[#1ed760] text-black' : 'bg-gray-200 text-gray-500 cursor-not-allowed')
-                 }`}
-               >
-                 <div className="relative z-10 flex items-center gap-2">
-                     {connectPhase === 'saving' && (
-                        <>
-                           <ICONS.Save className="animate-bounce" size={24} />
-                           <span>SAVING CONFIG...</span>
-                        </>
-                     )}
-                     {connectPhase === 'redirecting' && (
-                        <>
-                           <ICONS.ExternalLink className="animate-pulse" size={24} />
-                           <span>REDIRECTING...</span>
-                        </>
-                     )}
-                     {connectPhase === 'idle' && (
-                        <span>AUTHENTICATE WITH SPOTIFY</span>
-                     )}
-                 </div>
-                 
-                 {/* Progress Bar Overlay */}
-                 {isConnecting && (
-                    <div 
-                      className="absolute bottom-0 left-0 h-1.5 bg-black transition-all duration-[800ms] ease-out" 
-                      style={{ width: connectPhase === 'saving' ? '50%' : '100%' }}
-                    />
-                 )}
-               </button>
-               
-               {showManualCheck && (
-                  <div className="mt-4 flex flex-col items-center space-y-3 animate-in fade-in">
-                      <p className="text-xs font-mono text-[var(--text-muted)]">Popup closed or blocked?</p>
-                      <button 
-                        onClick={checkConnection}
-                        className="px-6 py-3 bg-black text-white font-bold font-mono text-sm animate-pulse border-2 border-transparent hover:border-black hover:bg-white hover:text-black shadow-retro-sm"
-                      >
-                         I'VE LOGGED IN, CONNECT NOW
-                      </button>
                   </div>
-               )}
-             </div>
-
-             {/* Manual Override Section */}
-             <div className="pt-8 border-t-2 border-theme">
-                <button 
-                  onClick={() => setShowManualEntry(!showManualEntry)}
-                  className="text-xs font-bold text-gray-400 hover:text-[var(--text-main)] font-mono underline uppercase"
-                >
-                   {showManualEntry ? '- Hide Developer Override' : '+ Developer Override (Manual Token)'}
-                </button>
-                
-                {showManualEntry && (
-                   <div className="mt-4 bg-[var(--bg-hover)] border-2 border-dashed border-gray-300 p-4 space-y-3">
-                      <p className="text-xs text-[var(--text-muted)] font-mono">
-                         If the popup fails, you can generate a token externally and paste it here.
-                      </p>
-                      <div className="flex gap-2">
-                         <input 
-                           type="text" 
-                           value={manualToken}
-                           onChange={(e) => setManualToken(e.target.value)}
-                           className="flex-1 border-2 border-theme p-2 text-xs font-mono focus:border-[var(--primary)] focus:outline-none"
-                           placeholder="Paste 'access_token' here..."
-                         />
-                         <button 
-                           onClick={handleManualTokenSave}
-                           disabled={!manualToken}
-                           className="bg-[var(--text-main)] text-[var(--bg-main)] px-4 py-2 text-xs font-bold font-mono hover:opacity-80 disabled:opacity-50"
-                         >
-                            SAVE_FORCE
-                         </button>
-                      </div>
-                   </div>
-                )}
-             </div>
+              )}
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {themes.map(t => {
+                      const isDark = ['cyber', 'midnight', 'matrix', 'synthwave', 'obsidian', 'nebula', 'oceanic', 'terminal', 'ember', 'sunset'].includes(t.id);
+                      const isActive = currentTheme === t.id;
+                      
+                      return (
+                          <button
+                            key={t.id}
+                            onClick={() => onSetTheme(t.id)}
+                            className={`
+                                relative p-4 border-2 transition-all group overflow-hidden flex flex-col justify-between h-32
+                                ${isActive 
+                                    ? 'border-theme ring-2 ring-[var(--primary)] shadow-retro-sm scale-[1.02]' 
+                                    : 'border-transparent hover:border-theme hover:shadow-sm bg-[var(--bg-hover)]'
+                                }
+                            `}
+                            style={{ backgroundColor: isActive ? t.bg : undefined }}
+                          >
+                              <div className="flex justify-between items-start w-full relative z-10">
+                                  <div className="w-6 h-6 rounded-full border border-black shadow-sm" style={{ backgroundColor: t.color }}></div>
+                                  {isActive && <ICONS.CheckCircle size={16} className={isDark ? 'text-white' : 'text-black'} />}
+                              </div>
+                              
+                              <div className="relative z-10 text-left">
+                                  <span className={`font-bold font-mono text-xs uppercase block ${isActive && isDark ? 'text-white' : 'text-[var(--text-main)]'}`}>
+                                      {t.label}
+                                  </span>
+                                  <span className={`text-[9px] font-mono opacity-60 ${isActive && isDark ? 'text-gray-300' : 'text-[var(--text-muted)]'}`}>
+                                      {t.tags.join(' / ')}
+                                  </span>
+                              </div>
+                          </button>
+                      );
+                  })}
+              </div>
           </div>
-        )}
       </div>
 
-      <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro opacity-75 hover:opacity-100 transition-opacity">
-         <h3 className="text-xl font-bold mb-4 font-mono uppercase text-[var(--text-main)]">System Info</h3>
-         <p className="text-sm text-[var(--text-muted)] mb-2 font-mono">GEMINI_API_KEY_STATUS</p>
-         <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <code className="text-sm font-mono font-bold text-[var(--text-main)]">DETECTED_IN_ENV</code>
+      {/* System Section */}
+      <div>
+         <div className="flex items-center gap-2 mb-6">
+              <ICONS.HardDrive className="text-[var(--primary)]" size={20} />
+              <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">System Data</h3>
+         </div>
+
+         <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro flex flex-col md:flex-row gap-8">
+             <div className="flex-1 space-y-4">
+                 <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                    <span className="text-xs font-mono font-bold text-[var(--text-muted)]">LOCAL_CACHE</span>
+                    <span className="text-xs font-mono text-[var(--text-main)]">Active</span>
+                 </div>
+                 <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                    <span className="text-xs font-mono font-bold text-[var(--text-muted)]">API_LATENCY</span>
+                    <span className="text-xs font-mono text-[var(--text-main)]">24ms</span>
+                 </div>
+                 <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                    <span className="text-xs font-mono font-bold text-[var(--text-muted)]">VOICE_ENGINE</span>
+                    <span className="text-xs font-mono text-[var(--text-main)]">Gemini Live</span>
+                 </div>
+             </div>
+             
+             <div className="flex flex-col justify-end">
+                <button 
+                    onClick={() => { localStorage.clear(); window.location.reload(); }}
+                    className="bg-red-50 text-red-600 px-6 py-3 font-bold font-mono text-xs border-2 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600 transition-colors uppercase flex items-center gap-2"
+                >
+                    <ICONS.Trash size={16} /> Factory Reset
+                </button>
+                <p className="text-[9px] text-gray-400 mt-2 text-center">Clears all settings, history, and offline data.</p>
+             </div>
          </div>
       </div>
+
     </div>
   );
 };

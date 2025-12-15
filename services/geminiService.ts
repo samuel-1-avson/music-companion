@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Song, DashboardInsight, MoodData, MusicProvider } from '../types';
+import { Song, DashboardInsight, MoodData, MusicProvider, Message } from '../types';
 import { searchSpotifyTrack } from './spotifyService';
 import { searchUnified } from './musicService';
 
@@ -9,11 +9,72 @@ const apiKey = process.env.API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey });
 
+export const generateGreeting = async (
+  userName: string,
+  moodHistory: MoodData[]
+): Promise<{ message: string; action: string }> => {
+  if (!apiKey) return { message: "System Online.", action: "Start Listening" };
+
+  const model = "gemini-2.5-flash";
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = now.toLocaleDateString([], { weekday: 'long' });
+  
+  // Summarize recent mood
+  const recentMoods = moodHistory.slice(-3).map(m => m.label).join(", ");
+
+  const prompt = `
+    You are a sentient, warm, and friendly music companion named Melody.
+    Current Context:
+    - User: ${userName || 'Friend'}
+    - Time: ${timeStr} on ${day}
+    - Recent Vibes: ${recentMoods || 'Unknown'}
+
+    Generate a short, casual greeting (max 15 words). 
+    It should sound like a close friend checking in. Be proactive about the time of day.
+    Avoid robotic phrases. Be human.
+    
+    Examples:
+    - "Morning [Name]! Coffee's brewing, need some jazz?"
+    - "Hey [Name], looks like a long day. Let's unwind."
+    - "Ready to crush some work this afternoon?"
+
+    Also suggest a short, punchy Action Button Label (max 4 words) like "Play Morning Jazz" or "Focus Mode".
+
+    Return JSON: { "message": string, "action": string }
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            message: { type: Type.STRING },
+            action: { type: Type.STRING }
+          }
+        }
+      }
+    });
+    const res = JSON.parse(response.text || "{}");
+    return {
+      message: res.message || `Welcome back, ${userName}.`,
+      action: res.action || "Play Music"
+    };
+  } catch (e) {
+    return { message: "Good to see you.", action: "Play Flow" };
+  }
+};
+
 export const generatePlaylistFromContext = async (
   context: string,
   provider: MusicProvider = 'YOUTUBE',
   imageBase64?: string,
-  spotifyToken?: string
+  spotifyToken?: string,
+  history: Message[] = []
 ): Promise<{ explanation: string; songs: Song[]; downloadTrack?: string }> => {
   if (!apiKey) {
     throw new Error("API Key is missing");
@@ -23,6 +84,15 @@ export const generatePlaylistFromContext = async (
   
   const parts: any[] = [];
   
+  // 1. Add History Context
+  if (history.length > 0) {
+      const historyStr = history.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join("\n");
+      parts.push({
+          text: `CONVERSATION HISTORY:\n${historyStr}\n\n---`
+      });
+  }
+
+  // 2. Add Visual Context if present
   if (imageBase64) {
     parts.push({
       inlineData: {
@@ -31,19 +101,22 @@ export const generatePlaylistFromContext = async (
       }
     });
     parts.push({
-      text: "Analyze this screen or environment. Determine the user's activity and mood."
+      text: "Analyze this image. What's the vibe? Where is the user?"
     });
   }
 
-  // Unified Prompt Structure: Always ask for search queries
+  // 3. Main Prompt
   parts.push({
-    text: `Based on the following context: "${context}", recommend 5 songs.
-    If the user explicitly asks to DOWNLOAD a specific song or artist, put the song name in 'downloadTrack'.
+    text: `User Request: "${context}"
+    
+    You are a music companion and a friend. Talk to the user warmly.
+    Based on the context, recommend 5 songs.
+    If the user asks to DOWNLOAD a specific song, put it in 'downloadTrack'.
     
     Return a JSON object with:
-    1. 'explanation': A short friendly string explaining why you chose this vibe.
-    2. 'searchQueries': An array of strings, where each string is "Artist Name - Song Title" for the recommended songs.
-    3. 'downloadTrack': (Optional) String name of the track to download if requested.
+    1. 'explanation': A warm, friendly message (max 25 words) directly addressing the user. Don't just list genres. Say why these songs fit the moment.
+    2. 'searchQueries': An array of strings, where each string is "Artist Name - Song Title".
+    3. 'downloadTrack': (Optional) String name of the track to download.
     `
   });
 
@@ -108,18 +181,19 @@ export const generatePlaylistFromContext = async (
 export const consultFocusAgent = async (
     userQuery: string, 
     currentMode: 'FOCUS' | 'BREAK'
-): Promise<{ reply: string; suggestedAction: 'NONE' | 'CHANGE_MUSIC' | 'TAKE_BREAK'; musicQuery?: string }> => {
+): Promise<{ reply: string; suggestedAction: 'NONE' | 'CHANGE_MUSIC' | 'TAKE_BREAK' | 'ADD_TASK'; musicQuery?: string; task?: string }> => {
     if (!apiKey) return { reply: "API Key missing", suggestedAction: 'NONE' };
     
     const model = "gemini-2.5-flash";
     const prompt = `
-        You are a minimalist Focus Coach AI. The user is in ${currentMode} mode.
+        You are Melody, a supportive Focus Coach. The user is in ${currentMode} mode.
         User says: "${userQuery}".
         
         Respond with a JSON object:
-        1. 'reply': A very short, punchy, lower-case motivational response or acknowledgment (max 10 words). style: terminal/hacker.
-        2. 'suggestedAction': One of 'NONE', 'CHANGE_MUSIC' (if they ask for different vibes), 'TAKE_BREAK'.
-        3. 'musicQuery': If action is CHANGE_MUSIC, provide a search string for the new vibe (e.g. "Pink Floyd").
+        1. 'reply': A very short, motivational, human response (max 10 words). Lowercase aesthetic.
+        2. 'suggestedAction': One of 'NONE', 'CHANGE_MUSIC', 'TAKE_BREAK', 'ADD_TASK'.
+        3. 'musicQuery': If action is CHANGE_MUSIC, provide the search string.
+        4. 'task': If action is ADD_TASK, provide the task description.
     `;
 
     try {
@@ -133,14 +207,15 @@ export const consultFocusAgent = async (
                     properties: {
                         reply: { type: Type.STRING },
                         suggestedAction: { type: Type.STRING },
-                        musicQuery: { type: Type.STRING }
+                        musicQuery: { type: Type.STRING },
+                        task: { type: Type.STRING }
                     }
                 }
             }
         });
         return JSON.parse(response.text || "{}");
     } catch (e) {
-        return { reply: "connection_error", suggestedAction: 'NONE' };
+        return { reply: "connection error", suggestedAction: 'NONE' };
     }
 };
 
@@ -163,7 +238,7 @@ export const transcribeAudio = async (audioBase64: string, mimeType: string = 'a
             }
           },
           {
-            text: "Transcribe the spoken language in this audio exactly. Do not add any conversational filler or descriptions. Just return the text."
+            text: "Transcribe the spoken language in this audio exactly."
           }
         ]
       }
@@ -186,10 +261,8 @@ export const getSongLyrics = async (artist: string, title: string): Promise<stri
     const response = await ai.models.generateContent({
       model,
       contents: `Get the lyrics for the song "${title}" by "${artist}". 
-      Return the lyrics in LRC format with timestamps (e.g. [00:12.34] Lyric line) if possible.
-      If timestamps are not available or difficult to estimate, return plain text with stanza breaks.
-      Do not include any intro text like "Here are the lyrics". 
-      If the song is instrumental, return "[Instrumental]".`
+      Return the lyrics in LRC format with timestamps if possible.
+      `
     });
 
     return response.text?.trim() || "Lyrics not found.";
@@ -211,8 +284,8 @@ export const recommendNextSong = async (currentSong: Song, recentHistory: Song[]
     History: ${historyStr}.
     Currently Playing: ${currentStr}.
     
-    Recommend ONE single song to play next that maintains the flow but keeps it interesting. 
-    Act like a professional DJ.
+    Recommend ONE single song to play next.
+    Act like a close friend sharing a discovery that fits the vibe perfectly.
     
     ${spotifyToken ? 
       'Return a JSON object with "searchQuery" (string: "Artist - Title").' : 
@@ -281,12 +354,11 @@ export const generateDJTransition = async (prevSong: Song, nextSong: Song): Prom
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: `You are a cool, charismatic radio DJ. 
+      contents: `You are a cool, friendly friend passing the aux cord. 
       The song "${prevSong.title}" by ${prevSong.artist} just finished.
       The next song is "${nextSong.title}" by ${nextSong.artist}.
-      Write a VERY short (max 2 sentences) transition script to say between these songs. 
-      Keep it casual, maybe mention the vibe change or connection. 
-      Do not include "Host:" or "DJ:" prefixes. Just the spoken text.`
+      Write a VERY short (max 2 sentences) thing to say. Casual, no "DJ" voice. Just natural.
+      `
     });
     return response.text?.trim() || "";
   } catch (e) {
@@ -301,10 +373,10 @@ export const analyzeSongMeaning = async (artist: string, title: string, lyrics: 
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: `Analyze the deeper meaning and themes of the song "${title}" by "${artist}".
+      contents: `Analyze the meaning of "${title}" by "${artist}".
       Lyrics snippet: "${lyrics.substring(0, 200)}...".
-      Provide a concise, interesting "Behind the Music" style breakdown (max 100 words).
-      Focus on emotions, hidden meanings, or cultural context.`
+      Provide a concise, interesting "Behind the Music" breakdown.
+      `
     });
     return response.text?.trim() || "Analysis unavailable.";
   } catch (e) {
@@ -317,16 +389,16 @@ export const generateDashboardInsights = async (moodHistory: MoodData[]): Promis
   const model = "gemini-2.5-flash";
   
   const now = new Date();
-  const timeOfDay = now.getHours() < 12 ? "morning" : now.getHours() < 18 ? "afternoon" : "evening";
   const recentVibes = moodHistory.slice(-5).map(m => `${m.time}: ${m.label} (${m.score}%)`).join(", ");
 
   const prompt = `
-    Analyze this listener's recent music/mood history and the current time of day (${timeOfDay}).
+    Analyze this listener's recent music/mood history.
     History: ${recentVibes}.
     
-    1. Grade their "Sonic Identity" from S (highest) to C based on mood consistency and flow (A for focused flow, C for erratic skipping).
-    2. Provide a 3-5 word "Title" for their current state (e.g. "Deep Flow State", "Erratic Explorer").
-    3. Suggest a specific recommendation or routine change to optimize their day (e.g. "Switch to high tempo to avoid afternoon slump").
+    You are a helpful music companion.
+    1. Grade their "Sonic Identity" from S (highest) to C.
+    2. Provide a 3-5 word "Title" for their current vibe (e.g. "Chill Explorer", "Deep Focus Mode").
+    3. Suggest a specific recommendation to help them today. Speak directly to them ("You should...").
     4. Suggest a specific next genre.
     
     Return JSON.

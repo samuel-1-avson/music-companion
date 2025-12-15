@@ -1,3 +1,4 @@
+
 import { Song, SpotifyProfile } from '../types';
 
 const SPOTIFY_AUTH_ENDPOINT = "https://accounts.spotify.com/authorize";
@@ -105,5 +106,60 @@ export const searchSpotifyTracks = async (token: string, query: string): Promise
   } catch (e) {
     console.error("Spotify Search Error", e);
     return [];
+  }
+};
+
+export const remoteControl = {
+  play: async (token: string, uri?: string) => {
+    const body: any = {};
+    if (uri) {
+       if (uri.startsWith('spotify:track')) body.uris = [uri];
+       else body.context_uri = uri;
+    }
+    
+    await fetch(`https://api.spotify.com/v1/me/player/play`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body)
+    });
+  },
+  resume: async (token: string) => {
+    await fetch(`https://api.spotify.com/v1/me/player/play`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  pause: async (token: string) => {
+    await fetch(`https://api.spotify.com/v1/me/player/pause`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  next: async (token: string) => {
+    await fetch(`https://api.spotify.com/v1/me/player/next`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  previous: async (token: string) => {
+    await fetch(`https://api.spotify.com/v1/me/player/previous`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  setVolume: async (token: string, volumePercent: number) => {
+    await fetch(`https://api.spotify.com/v1/me/player/volume?volume_percent=${volumePercent}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  getActiveDevice: async (token: string) => {
+      try {
+          const res = await fetch(`https://api.spotify.com/v1/me/player/devices`, {
+              headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          return data.devices?.find((d: any) => d.is_active);
+      } catch (e) { return null; }
   }
 };

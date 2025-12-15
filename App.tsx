@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
-import MusicPlayer from './components/MusicPlayer';
 import Dashboard from './components/Dashboard';
 import ChatInterface from './components/ChatInterface';
 import LiveInterface from './components/LiveInterface';
@@ -9,45 +8,146 @@ import Settings from './components/Settings';
 import FocusMode from './components/FocusMode';
 import Extensions from './components/Extensions';
 import TheLab from './components/TheLab';
-import IntroPage from './components/IntroPage';
 import Arcade from './components/Arcade';
 import OfflineLibrary from './components/OfflineLibrary';
+import UserProfile from './components/UserProfile'; 
+import SentientBackground from './components/SentientBackground';
 import { AppView, Song, MoodData, SpotifyProfile, Theme, MusicProvider } from './types';
 import { MOCK_SONGS, ICONS } from './constants';
-import { parseSpotifyToken, parseSpotifyError, getUserProfile } from './services/spotifyService';
-import { recommendNextSong, generateDJTransition } from './services/geminiService';
+import { parseSpotifyToken, parseSpotifyError, getUserProfile, remoteControl } from './services/spotifyService';
+import { recommendNextSong, generateDJTransition, generateGreeting } from './services/geminiService';
 import { useWakeWord } from './hooks/useWakeWord';
 import { getYouTubeAudioStream } from './services/musicService';
-import { getMemories } from './utils/db';
+import { getFavoritesDB, toggleFavoriteDB, addToHistoryDB, saveSettingDB, getSettingDB } from './utils/db'; 
 
 const App: React.FC = () => {
-  const [introCompleted, setIntroCompleted] = useState(false);
-  const [userName, setUserName] = useState('');
+  const [userName, setUserName] = useState('User');
   
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentSong, setCurrentSong] = useState<Song | null>(MOCK_SONGS[0]);
   const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
+  const [favorites, setFavorites] = useState<Song[]>([]); 
+  
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>('minimal');
   const [musicProvider, setMusicProvider] = useState<MusicProvider>('YOUTUBE');
   const [isRadioMode, setIsRadioMode] = useState(false);
   const [isDJSpeaking, setIsDJSpeaking] = useState(false);
   const [moodData, setMoodData] = useState<MoodData[]>([{ time: '08:00', score: 50, label: 'Neutral' }]);
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
+  
+  // Theme State
+  const [theme, setTheme] = useState<Theme>('minimal');
+  const [isSmartTheme, setIsSmartTheme] = useState(true);
+
+  // Proactive Greeting State
+  const [greeting, setGreeting] = useState<{message: string, action: string} | null>(null);
 
   // Audio Graph State
   const [musicAnalyser, setMusicAnalyser] = useState<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   // EQ Nodes: [Low, MidLow, Mid, MidHigh, High]
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [eqValues, setEqValues] = useState<number[]>([0,0,0,0,0]);
 
+  // --- PERSISTENCE & INIT ---
+  useEffect(() => {
+      const savedSmart = localStorage.getItem('smart_theme_enabled');
+      if (savedSmart !== null) setIsSmartTheme(savedSmart === 'true');
+      
+      const savedTheme = localStorage.getItem('user_theme');
+      if (savedTheme && !isSmartTheme) setTheme(savedTheme as Theme);
+
+      // Load Username
+      getSettingDB('user_name').then(name => {
+          if (name) setUserName(name);
+      });
+  }, []);
+
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Load Favorites on Mount
+  useEffect(() => {
+      getFavoritesDB().then(setFavorites).catch(console.error);
+  }, []);
+
+  const handleSetTheme = (t: Theme) => {
+      setTheme(t);
+      localStorage.setItem('user_theme', t);
+      if (isSmartTheme) {
+          setIsSmartTheme(false);
+          localStorage.setItem('smart_theme_enabled', 'false');
+      }
+  };
+
+  const handleToggleSmartTheme = () => {
+      const newVal = !isSmartTheme;
+      setIsSmartTheme(newVal);
+      localStorage.setItem('smart_theme_enabled', String(newVal));
+  };
+
+  const handleUpdateProfile = (name: string, avatar?: string) => {
+      setUserName(name);
+      saveSettingDB('user_name', name);
+      if (avatar) saveSettingDB('user_avatar', avatar);
+  };
+
+  // --- SMART THEME ENGINE ---
+  useEffect(() => {
+      if (!isSmartTheme) return;
+
+      // 1. Context/View Based Overrides
+      if (currentView === AppView.ARCADE) { setTheme('synthwave'); return; }
+      if (currentView === AppView.LAB) { setTheme('terminal'); return; }
+      if (currentView === AppView.FOCUS) { setTheme('obsidian'); return; }
+      if (currentView === AppView.OFFLINE) { setTheme('minimal'); return; }
+
+      // 2. Song Mood Based
+      if (currentSong && currentSong.mood) {
+          const mood = currentSong.mood.toLowerCase();
+          if (mood.includes('energy') || mood.includes('workout')) setTheme('ember');
+          else if (mood.includes('happy') || mood.includes('dance')) setTheme('solar');
+          else if (mood.includes('chill') || mood.includes('relax')) setTheme('glacier');
+          else if (mood.includes('focus') || mood.includes('study')) setTheme('midnight');
+          else if (mood.includes('sad') || mood.includes('deep')) setTheme('oceanic');
+          else if (mood.includes('nature')) setTheme('forest');
+          else if (mood.includes('love')) setTheme('sakura');
+          else if (mood.includes('cyber') || mood.includes('future')) setTheme('cyber');
+          else if (mood.includes('retro')) setTheme('sunset');
+          else setTheme('classic');
+      } else {
+          // 3. Time of Day Fallback
+          const hour = new Date().getHours();
+          if (hour >= 20 || hour < 6) setTheme('midnight');
+          else if (hour >= 6 && hour < 11) setTheme('classic');
+          else if (hour >= 18 && hour < 20) setTheme('sunset');
+      }
+  }, [currentView, currentSong?.id, currentSong?.mood, isSmartTheme]);
+
+
+  const handleToggleFavorite = async (song: Song) => {
+      const isAdded = await toggleFavoriteDB(song);
+      if (isAdded) {
+          setFavorites(prev => [...prev, song]);
+      } else {
+          setFavorites(prev => prev.filter(s => s.id !== song.id));
+      }
+  };
+
+  // --- PROACTIVE COMPANION LOGIC ---
+  useEffect(() => {
+      if (!greeting) {
+          generateGreeting(userName, moodData).then(result => {
+             setGreeting(result);
+             setTimeout(() => setGreeting(null), 10000);
+          });
+      }
+  }, [userName]); // Regenerate greeting if name changes
 
   // Wake Word
   const handleWakeWordDetected = useCallback(() => {
@@ -68,7 +168,7 @@ const App: React.FC = () => {
 
   const { isListening: isWakeWordListening } = useWakeWord(
       handleWakeWordDetected, 
-      introCompleted && currentView !== AppView.LIVE && currentView !== AppView.FOCUS
+      currentView !== AppView.LIVE && currentView !== AppView.FOCUS
   );
 
   const handleAudioElement = useCallback((audioElement: HTMLAudioElement) => {
@@ -82,7 +182,6 @@ const App: React.FC = () => {
         const ctx = audioContextRef.current;
         if (ctx.state === 'suspended') ctx.resume();
 
-        // Create EQ Filters if not exist
         if (eqFiltersRef.current.length === 0) {
             const freqs = [60, 310, 1000, 3000, 12000];
             const types: BiquadFilterType[] = ['lowshelf', 'peaking', 'peaking', 'peaking', 'highshelf'];
@@ -91,17 +190,16 @@ const App: React.FC = () => {
                 const filter = ctx.createBiquadFilter();
                 filter.type = types[i];
                 filter.frequency.value = f;
-                filter.gain.value = 0; // default 0dB
+                filter.gain.value = 0; 
                 return filter;
             });
         }
 
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512; // Higher resolution for visualization
+        analyser.fftSize = 512; 
 
         const source = ctx.createMediaElementSource(audioElement);
         
-        // Connect Graph: Source -> EQ1 -> EQ2... -> EQ5 -> Analyser -> Destination
         let currentNode: AudioNode = source;
         eqFiltersRef.current.forEach(filter => {
             currentNode.connect(filter);
@@ -119,33 +217,29 @@ const App: React.FC = () => {
   }, []);
 
   const setEQBand = (index: number, value: number) => {
-      // Update State
       const newVals = [...eqValues];
       newVals[index] = value;
       setEqValues(newVals);
       
-      // Update Audio Node
       if (eqFiltersRef.current[index]) {
           eqFiltersRef.current[index].gain.value = value;
       }
   };
 
   useEffect(() => {
-    // Spotify Auth handling (same as before)
     const hash = window.location.hash;
     if (hash) {
-      setIntroCompleted(true);
       const token = parseSpotifyToken(hash);
       const error = parseSpotifyError(hash);
       if (token) {
         setSpotifyToken(token);
         localStorage.setItem('spotify_token', token);
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        setCurrentView(AppView.SETTINGS);
+        setCurrentView(AppView.EXTENSIONS);
       } else if (error) {
         setErrorMessage(`Spotify Connection Error: ${error}`);
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        setCurrentView(AppView.SETTINGS);
+        setCurrentView(AppView.EXTENSIONS);
       }
     } else {
       const savedToken = localStorage.getItem('spotify_token');
@@ -177,32 +271,65 @@ const App: React.FC = () => {
     localStorage.removeItem('spotify_token');
   };
 
+  // --- PLAYBACK CONTROL ---
+  
+  useEffect(() => {
+      if (!currentSong) return;
+
+      const triggerPlayback = async () => {
+          if (musicProvider === 'SPOTIFY' && spotifyToken && currentSong.spotifyUri) {
+              try {
+                  await remoteControl.play(spotifyToken, currentSong.spotifyUri);
+              } catch (e) {
+                  console.error("Remote play failed", e);
+                  setErrorMessage("Failed to send command to Spotify.");
+              }
+          } 
+          else if (hiddenAudioRef.current && (currentSong.previewUrl || currentSong.fileBlob)) {
+              hiddenAudioRef.current.src = currentSong.previewUrl || (currentSong.fileBlob ? URL.createObjectURL(currentSong.fileBlob) : '');
+              hiddenAudioRef.current.play().catch(e => console.warn("Auto-play blocked", e));
+          }
+      };
+
+      triggerPlayback();
+  }, [currentSong?.id, musicProvider, spotifyToken]);
+
   const playSong = async (song: Song, contextQueue?: Song[]) => {
     let trackToPlay = song;
-    if (song.spotifyUri?.startsWith('yt:') && !song.previewUrl) {
-        const videoId = song.spotifyUri.split(':')[1];
-        if (videoId) {
-            try {
-                const streamUrl = await getYouTubeAudioStream(videoId);
-                if (streamUrl) trackToPlay = { ...song, previewUrl: streamUrl };
-                else { setErrorMessage("Could not resolve audio."); return; }
-            } catch(e) { setErrorMessage("Network error."); return; }
+    
+    if (musicProvider !== 'SPOTIFY') {
+        if (song.spotifyUri?.startsWith('yt:') && !song.previewUrl) {
+            const videoId = song.spotifyUri.split(':')[1];
+            if (videoId) {
+                try {
+                    const streamUrl = await getYouTubeAudioStream(videoId);
+                    if (streamUrl) trackToPlay = { ...song, previewUrl: streamUrl };
+                } catch(e) {}
+            }
+        }
+        if (song.fileBlob && !song.previewUrl) {
+           trackToPlay = { ...song, previewUrl: URL.createObjectURL(song.fileBlob) };
         }
     }
-    if (song.fileBlob && !song.previewUrl) {
-       trackToPlay = { ...song, previewUrl: URL.createObjectURL(song.fileBlob) };
-    }
+
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
        audioContextRef.current.resume();
     }
+    
     setCurrentSong(trackToPlay);
-    // Update mood history
+    
+    if (musicProvider !== 'SPOTIFY' && !trackToPlay.previewUrl && trackToPlay.externalUrl) {
+        window.open(trackToPlay.externalUrl, '_blank');
+    }
+    
     const now = new Date();
     setMoodData(prev => [...prev.slice(-20), { 
         time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`, 
-        score: Math.floor(Math.random() * 40) + 60, // simple calc
+        score: Math.floor(Math.random() * 40) + 60, 
         label: song.mood || 'Vibe' 
     }]);
+
+    addToHistoryDB(trackToPlay).catch(console.error);
 
     if (contextQueue) setQueue(contextQueue);
     else if (!queue.find(s => s.id === trackToPlay.id)) setQueue(prev => [...prev, trackToPlay]);
@@ -210,6 +337,11 @@ const App: React.FC = () => {
 
   const handleNext = async () => {
     if (!currentSong || queue.length === 0) return;
+    
+    if (musicProvider === 'SPOTIFY' && spotifyToken) {
+        await remoteControl.next(spotifyToken);
+    }
+
     const idx = queue.findIndex(s => s.id === currentSong.id);
     let nextSong: Song | null = null;
     if (idx < queue.length - 1) nextSong = queue[idx + 1];
@@ -227,7 +359,6 @@ const App: React.FC = () => {
        if (isRadioMode && currentSong) {
            const script = await generateDJTransition(currentSong, nextSong);
            if (script) {
-               // DJ Logic
                setIsDJSpeaking(true);
                const u = new SpeechSynthesisUtterance(script);
                u.onend = () => { setIsDJSpeaking(false); playSong(nextSong!); };
@@ -239,18 +370,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePrev = () => {
+  const handlePrev = async () => {
+    if (musicProvider === 'SPOTIFY' && spotifyToken) {
+        await remoteControl.previous(spotifyToken);
+    }
+
     if (!currentSong || queue.length === 0) return;
     const idx = queue.findIndex(s => s.id === currentSong.id);
     if (idx > 0) playSong(queue[idx - 1]);
     else playSong(queue[queue.length - 1]);
-  };
-
-  const handleLoadPlaylist = (songs: Song[]) => {
-      if (songs.length > 0) {
-          setQueue(songs);
-          playSong(songs[0], songs);
-      }
   };
 
   const renderContent = () => {
@@ -269,22 +397,63 @@ const App: React.FC = () => {
       case AppView.OFFLINE:
         return <OfflineLibrary onPlaySong={playSong} />;
       case AppView.LAB:
-        return <TheLab setEQBand={setEQBand} eqValues={eqValues} />;
+        return <TheLab setEQBand={setEQBand} eqValues={eqValues} analyser={musicAnalyser} />;
       case AppView.EXTENSIONS:
-        return <Extensions onPlaySong={playSong} spotifyToken={spotifyToken} musicProvider={musicProvider} />;
+        return <Extensions onPlaySong={playSong} spotifyToken={spotifyToken} spotifyProfile={spotifyProfile} musicProvider={musicProvider} onSetMusicProvider={setMusicProvider} onDisconnectSpotify={handleDisconnectSpotify} />;
       case AppView.SETTINGS:
-        return <Settings spotifyToken={spotifyToken} spotifyProfile={spotifyProfile} onDisconnect={handleDisconnectSpotify} currentTheme={theme} onSetTheme={setTheme} musicProvider={musicProvider} onSetMusicProvider={setMusicProvider} />;
+        return <Settings currentTheme={theme} onSetTheme={handleSetTheme} isSmartTheme={isSmartTheme} onToggleSmartTheme={handleToggleSmartTheme} />;
+      case AppView.PROFILE: 
+        return <UserProfile userName={userName} favorites={favorites} onPlaySong={playSong} onToggleFavorite={handleToggleFavorite} onUpdateProfile={handleUpdateProfile} />;
       default:
         return <Dashboard onPlaySong={playSong} onChangeView={setCurrentView} spotifyToken={spotifyToken} moodData={moodData} musicProvider={musicProvider} onSetMusicProvider={setMusicProvider} />;
     }
   };
   
-  if (!introCompleted) {
-    return <IntroPage onComplete={(name) => { setUserName(name); setIntroCompleted(true); }} />;
-  }
-
   return (
-    <div className="flex h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans transition-colors duration-300">
+    <div className="flex h-screen w-full bg-transparent text-[var(--text-main)] font-sans transition-colors duration-300 relative">
+      
+      <SentientBackground 
+         mood={currentSong?.mood || 'Neutral'} 
+         isPlaying={!!currentSong?.previewUrl && !isAutoDJLoading} 
+         theme={theme}
+      />
+
+      <audio 
+        ref={(el) => {
+            hiddenAudioRef.current = el;
+            if (el) handleAudioElement(el);
+        }}
+        onEnded={handleNext}
+        className="hidden"
+        crossOrigin="anonymous"
+      />
+
+      {greeting && (
+          <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-700 w-[90%] max-w-md">
+              <div className="bg-white/90 backdrop-blur-md border-2 border-black p-4 shadow-[4px_4px_0_0_rgba(0,0,0,1)] rounded-xl flex items-start gap-4">
+                  <div className="bg-black text-white p-2 rounded-full flex-shrink-0">
+                      <ICONS.Smile size={24} />
+                  </div>
+                  <div className="flex-1">
+                      <p className="text-sm font-medium font-sans text-black leading-snug">{greeting.message}</p>
+                      <button 
+                        onClick={() => {
+                            setGreeting(null);
+                            if (greeting.action.includes("Focus")) setCurrentView(AppView.FOCUS);
+                            if (greeting.action.includes("Play")) playSong(MOCK_SONGS[2]);
+                        }}
+                        className="text-xs font-bold bg-black text-white px-3 py-1.5 rounded-full mt-3 hover:bg-[var(--primary)] hover:text-black transition-colors"
+                      >
+                          {greeting.action}
+                      </button>
+                  </div>
+                  <button onClick={() => setGreeting(null)} className="text-gray-400 hover:text-black">
+                      <ICONS.Close size={14} />
+                  </button>
+              </div>
+          </div>
+      )}
+
       {currentView !== AppView.FOCUS && (
           <Sidebar currentView={currentView} onChangeView={setCurrentView} spotifyProfile={spotifyProfile} isListeningForWakeWord={isWakeWordListening} />
       )}
@@ -302,7 +471,7 @@ const App: React.FC = () => {
         </div>
         
         {(isAutoDJLoading || isDJSpeaking) && (
-           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-[var(--text-main)] text-[var(--bg-main)] px-6 py-3 shadow-retro flex items-center space-x-3 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+           <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-[var(--text-main)] text-[var(--bg-main)] px-6 py-3 shadow-retro flex items-center space-x-3 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 rounded-full">
               <div className="relative">
                  <ICONS.Loader className="animate-spin text-[var(--primary)]" />
                  {isDJSpeaking && <span className="absolute inset-0 bg-[var(--primary)] rounded-full animate-ping opacity-20"></span>}
@@ -313,36 +482,7 @@ const App: React.FC = () => {
               </div>
            </div>
         )}
-
-        {currentView !== AppView.FOCUS && <div className="h-24 flex-shrink-0"></div>}
       </main>
-
-      {currentView !== AppView.FOCUS && (
-          <MusicPlayer 
-            currentSong={currentSong} 
-            queue={queue}
-            onNext={handleNext}
-            onPrev={handlePrev}
-            hasNext={true} 
-            hasPrev={queue.length > 1}
-            isRadioMode={isRadioMode}
-            toggleRadioMode={() => setIsRadioMode(!isRadioMode)}
-            onAudioElement={handleAudioElement}
-            onPlaySong={playSong}
-            onReorderQueue={(f, t) => {
-                setQueue(prev => {
-                    const n = [...prev];
-                    const [m] = n.splice(f, 1);
-                    n.splice(t, 0, m);
-                    return n;
-                })
-            }}
-            onRemoveFromQueue={i => setQueue(prev => prev.filter((_, idx) => idx !== i))}
-            onAddToQueue={s => setQueue(prev => [...prev, s])}
-            onLoadPlaylist={handleLoadPlaylist}
-            musicAnalyser={musicAnalyser}
-          />
-      )}
     </div>
   );
 };

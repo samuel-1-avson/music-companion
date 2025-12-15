@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { Song, Message, MusicProvider } from '../types';
@@ -12,10 +13,10 @@ interface ChatInterfaceProps {
 }
 
 const SUGGESTED_PROMPTS = [
-  { icon: ICONS.Music, label: "Deep Focus", text: "I need deep focus music for coding. No lyrics, just flow." },
-  { icon: ICONS.DownloadCloud, label: "Download Song", text: "Download 'Midnight City' for offline listening." },
-  { icon: ICONS.Play, label: "Workout Energy", text: "High tempo energetic tracks for a intense gym session." },
-  { icon: ICONS.Search, label: "Discover Jazz", text: "Introduce me to some classic jazz tracks for a rainy afternoon." },
+  { icon: ICONS.Music, label: "Deep Focus", text: "I need to get in the zone. Play something instrumental and driving." },
+  { icon: ICONS.DownloadCloud, label: "Save Offline", text: "I'm heading out. Can you download 'Midnight City' for me?" },
+  { icon: ICONS.Play, label: "Gym Vibe", text: "I need high energy. Let's crush this workout." },
+  { icon: ICONS.Search, label: "Surprise Me", text: "Play something completely different. I'm bored." },
 ];
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken, musicProvider = 'YOUTUBE' }) => {
@@ -24,7 +25,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
     {
       id: 'welcome',
       role: 'model',
-      text: "Hi. I am your Music Companion. State your mood, activity, or ask me to download a track.",
+      text: "Hey there. I'm listening. How are you feeling right now? Or just tell me what you're doing.",
       type: 'text',
       timestamp: new Date()
     }
@@ -88,8 +89,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
 
     try {
       const base64Data = image ? image.split(',')[1] : undefined;
-      // Pass the selected musicProvider here
-      const { explanation, songs, downloadTrack } = await generatePlaylistFromContext(text, musicProvider as MusicProvider, base64Data, spotifyToken || undefined);
+      
+      // Pass the current message history to the service for context
+      const { explanation, songs, downloadTrack } = await generatePlaylistFromContext(
+          text, 
+          musicProvider as MusicProvider, 
+          base64Data, 
+          spotifyToken || undefined,
+          messages // Pass full history
+      );
 
       const modelMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -364,27 +372,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
             {msg.role === 'model' && (
-               <div className="w-10 h-10 border-2 border-black bg-white flex items-center justify-center mr-3 mt-1 flex-shrink-0 shadow-retro-sm">
-                  <ICONS.Music size={18} className="text-black" />
+               <div className="w-10 h-10 border-2 border-black bg-white flex items-center justify-center mr-3 mt-1 flex-shrink-0 shadow-retro-sm rounded-full">
+                  <ICONS.Smile size={20} className="text-black" />
                </div>
             )}
             <div className={`max-w-[85%] border-2 border-black p-4 shadow-retro-sm ${
               msg.role === 'user' 
-                ? 'bg-black text-white' 
-                : 'bg-white text-black'
+                ? 'bg-black text-white rounded-l-xl rounded-tr-xl' 
+                : 'bg-white text-black rounded-r-xl rounded-tl-xl'
             }`}>
               {msg.attachments?.map((att, i) => (
                 <img key={i} src={att.url} alt="Attachment" className="max-w-full h-48 object-cover border-2 border-white mb-3 grayscale" />
               ))}
-              <p className="whitespace-pre-wrap leading-relaxed font-mono text-sm">{msg.text}</p>
+              <p className="whitespace-pre-wrap leading-relaxed font-sans text-sm">{msg.text}</p>
               
               {/* Render Recommended Songs if attached */}
               {(msg as any).songs && (
                 <div className="mt-4 space-y-2">
                   {(msg as any).songs.map((song: Song) => (
-                    <div key={song.id} className="flex items-center justify-between p-3 bg-gray-50 border-2 border-black hover:shadow-retro-sm transition group cursor-pointer hover:bg-orange-100" onClick={() => onPlaySong(song, (msg as any).songs)}>
+                    <div key={song.id} className="flex items-center justify-between p-3 bg-gray-50 border-2 border-black hover:shadow-retro-sm transition group cursor-pointer hover:bg-orange-100 rounded-lg" onClick={() => onPlaySong(song, (msg as any).songs)}>
                        <div className="flex items-center space-x-3 overflow-hidden">
-                          <div className="w-10 h-10 border border-black bg-gray-200 relative flex-shrink-0">
+                          <div className="w-10 h-10 border border-black bg-gray-200 relative flex-shrink-0 rounded-md overflow-hidden">
                             <img src={song.coverUrl} className="w-full h-full object-cover grayscale" />
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity">
                               <ICONS.Play size={16} className="text-white" />
@@ -402,7 +410,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
               )}
             </div>
             {msg.role === 'user' && (
-               <div className="w-10 h-10 border-2 border-black bg-orange-400 flex items-center justify-center ml-3 mt-1 flex-shrink-0 shadow-retro-sm">
+               <div className="w-10 h-10 border-2 border-black bg-orange-400 flex items-center justify-center ml-3 mt-1 flex-shrink-0 shadow-retro-sm rounded-full">
                   <span className="text-xs font-bold text-black font-mono">YOU</span>
                </div>
             )}
@@ -412,11 +420,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
         {/* Loading Indicator */}
         {isLoading && (
            <div className="flex justify-start">
-             <div className="w-10 h-10 border-2 border-black bg-white flex items-center justify-center mr-3 flex-shrink-0">
+             <div className="w-10 h-10 border-2 border-black bg-white flex items-center justify-center mr-3 flex-shrink-0 rounded-full">
                   <ICONS.Loader size={18} className="text-black animate-spin" />
              </div>
-             <div className="bg-white border-2 border-black p-4 flex items-center space-x-3 shadow-retro-sm">
-               <span className="text-black text-sm font-bold font-mono uppercase blink">COMPUTING_RESPONSE...</span>
+             <div className="bg-white border-2 border-black p-4 flex items-center space-x-3 shadow-retro-sm rounded-r-xl rounded-tl-xl">
+               <span className="text-black text-sm font-bold font-mono uppercase blink">THINKING...</span>
              </div>
            </div>
         )}
@@ -428,9 +436,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
                <button 
                  key={idx}
                  onClick={() => handleSuggestionClick(suggestion.text)}
-                 className="flex items-start p-4 bg-white border-2 border-black hover:shadow-retro transition-all text-left group hover:bg-orange-50"
+                 className="flex items-start p-4 bg-white border-2 border-black hover:shadow-retro transition-all text-left group hover:bg-orange-50 rounded-xl"
                >
-                 <div className="border-2 border-black p-2 mr-3 bg-white group-hover:bg-black transition-colors">
+                 <div className="border-2 border-black p-2 mr-3 bg-white group-hover:bg-black transition-colors rounded-lg">
                     <suggestion.icon size={18} className="text-black group-hover:text-white" />
                  </div>
                  <div>
@@ -449,18 +457,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
       <div className="absolute bottom-0 left-0 right-0 bg-[#f3f0e8] border-t-2 border-black p-6">
         <div className="max-w-4xl mx-auto relative">
           {attachedImage && (
-            <div className="absolute bottom-full left-0 mb-4 p-2 bg-white border-2 border-black flex items-center space-x-2 shadow-retro-sm">
+            <div className="absolute bottom-full left-0 mb-4 p-2 bg-white border-2 border-black flex items-center space-x-2 shadow-retro-sm rounded-lg">
                <div className="relative">
-                 <img src={attachedImage} className="w-16 h-16 object-cover border border-black grayscale" />
-                 <button onClick={() => setAttachedImage(null)} className="absolute -top-3 -right-3 bg-red-500 text-white border-2 border-black w-6 h-6 flex items-center justify-center hover:bg-red-600">
-                   <ICONS.Square size={10} className="fill-current rotate-45" /> 
+                 <img src={attachedImage} className="w-16 h-16 object-cover border border-black grayscale rounded" />
+                 <button onClick={() => setAttachedImage(null)} className="absolute -top-3 -right-3 bg-red-500 text-white border-2 border-black w-6 h-6 flex items-center justify-center hover:bg-red-600 rounded-full">
+                   <ICONS.Close size={10} className="fill-current" /> 
                  </button>
                </div>
                <span className="text-xs text-black font-mono font-bold px-2">IMAGE_LOADED</span>
             </div>
           )}
           
-          <div className="flex items-center space-x-2 bg-white border-2 border-black p-1 shadow-retro-lg transition-all">
+          <div className="flex items-center space-x-2 bg-white border-2 border-black p-1 shadow-retro-lg transition-all rounded-xl overflow-hidden">
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -471,7 +479,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
             
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="p-3 text-black hover:bg-gray-100 border-r-2 border-black border-transparent transition"
+              className="p-3 text-black hover:bg-gray-100 border-r-2 border-gray-100 transition"
               title="Upload"
               disabled={isRecording || isTranscribing}
             >
@@ -482,7 +490,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
             <button 
               onClick={toggleRecording}
               disabled={isTranscribing}
-              className={`p-3 transition border-2 border-transparent ${isRecording ? 'text-white bg-red-500' : 'text-black hover:bg-gray-100'}`}
+              className={`p-3 transition ${isRecording ? 'text-red-500 animate-pulse' : 'text-black hover:bg-gray-100'}`}
             >
               {isTranscribing ? (
                 <ICONS.Loader className="animate-spin" size={24} />
@@ -494,14 +502,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
             </button>
 
             {isRecording ? (
-               <div className="flex-1 h-12 flex items-center justify-center relative overflow-hidden bg-black border-x-2 border-black mx-2">
-                  <div className="absolute inset-0 flex items-center justify-center text-xs text-orange-500 font-mono font-bold tracking-widest z-10 pointer-events-none mix-blend-difference">RECORDING_AUDIO</div>
-                  <canvas ref={canvasRef} className="w-full h-full" />
+               <div className="flex-1 h-12 flex items-center justify-center relative overflow-hidden bg-gray-50 mx-2 rounded">
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-orange-500 font-mono font-bold tracking-widest z-10 pointer-events-none">LISTENING...</div>
+                  <canvas ref={canvasRef} className="w-full h-full opacity-50" />
                </div>
             ) : (
                <input 
                  type="text" 
-                 className="flex-1 bg-transparent border-none focus:ring-0 text-black placeholder-gray-500 h-12 px-2 text-lg font-mono"
+                 className="flex-1 bg-transparent border-none focus:ring-0 text-black placeholder-gray-500 h-12 px-2 text-lg font-sans"
                  placeholder={isTranscribing ? "PROCESSING..." : `Chat with ${musicProvider}...`}
                  value={input}
                  onChange={(e) => setInput(e.target.value)}
@@ -514,13 +522,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onPlaySong, spotifyToken,
             <button 
               onClick={handleSend}
               disabled={(!input.trim() && !attachedImage) || isRecording || isTranscribing}
-              className={`p-3 transition border-l-2 border-black ${
+              className={`p-3 transition rounded-lg mr-1 ${
                 input.trim() || attachedImage 
                   ? 'bg-black text-white hover:bg-gray-800' 
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
               }`}
             >
-              <ICONS.Send size={24} />
+              <ICONS.Send size={20} />
             </button>
           </div>
         </div>

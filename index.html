@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -56,23 +57,171 @@
         --shadow: #3b0764;
       }
 
+      /* REFINED MINIMAL THEME */
       body[data-theme='minimal'] {
         --bg-main: #ffffff;
         --bg-card: #ffffff;
         --bg-hover: #f4f4f5; /* zinc-100 */
-        --text-main: #18181b; /* zinc-900 */
+        --text-main: #09090b; /* zinc-950 - Higher contrast */
         --text-muted: #71717a; /* zinc-500 */
         --primary: #18181b; /* Black */
-        --primary-hover: #3f3f46;
-        --border: #e4e4e7; /* zinc-200 */
+        --primary-hover: #27272a;
+        --border: #e4e4e7; /* zinc-200 - Subtle border */
         --shadow: transparent;
+      }
+
+      /* --- NEW THEMES --- */
+
+      body[data-theme='midnight'] {
+        --bg-main: #0f172a; /* slate-900 */
+        --bg-card: #1e293b; /* slate-800 */
+        --bg-hover: #334155; /* slate-700 */
+        --text-main: #f1f5f9; /* slate-100 */
+        --text-muted: #94a3b8; /* slate-400 */
+        --primary: #38bdf8; /* sky-400 */
+        --primary-hover: #0ea5e9;
+        --border: #1e293b;
+        --shadow: #0f172a;
+      }
+
+      body[data-theme='solar'] {
+        --bg-main: #fff7ed; /* orange-50 */
+        --bg-card: #ffffff;
+        --bg-hover: #ffedd5; /* orange-100 */
+        --text-main: #9a3412; /* orange-900 */
+        --text-muted: #c2410c; /* orange-700 */
+        --primary: #f97316; /* orange-500 */
+        --primary-hover: #ea580c;
+        --border: #fb923c;
+        --shadow: #c2410c;
+      }
+
+      body[data-theme='matrix'] {
+        --bg-main: #000000;
+        --bg-card: #051a05;
+        --bg-hover: #0a2f0a;
+        --text-main: #00ff41;
+        --text-muted: #008f11;
+        --primary: #00ff41;
+        --primary-hover: #00cc00;
+        --border: #003b00;
+        --shadow: #002200;
+      }
+
+      body[data-theme='synthwave'] {
+        --bg-main: #2e022d; /* deep purple */
+        --bg-card: #4a044e; /* fuchsia-950/ish */
+        --bg-hover: #701a75;
+        --text-main: #f0abfc; /* fuchsia-300 */
+        --text-muted: #c026d3;
+        --primary: #22d3ee; /* cyan-400 */
+        --primary-hover: #e879f9; /* fuchsia-400 */
+        --border: #d946ef;
+        --shadow: #86198f;
+      }
+
+      body[data-theme='glacier'] {
+        --bg-main: #f0f9ff; /* sky-50 */
+        --bg-card: #ffffff;
+        --bg-hover: #e0f2fe; /* sky-100 */
+        --text-main: #0c4a6e; /* sky-900 */
+        --text-muted: #0369a1; /* sky-700 */
+        --primary: #38bdf8; /* sky-400 */
+        --primary-hover: #0ea5e9;
+        --border: #7dd3fc;
+        --shadow: #0284c7;
+      }
+
+      body[data-theme='obsidian'] {
+        --bg-main: #050505;
+        --bg-card: #111111;
+        --bg-hover: #222222;
+        --text-main: #e5e5e5;
+        --text-muted: #737373;
+        --primary: #ffffff;
+        --primary-hover: #d4d4d4;
+        --border: #333333;
+        --shadow: #000000;
+      }
+
+      body[data-theme='nebula'] {
+        --bg-main: #1e1b4b; /* indigo-950 */
+        --bg-card: #312e81; /* indigo-900 */
+        --bg-hover: #4338ca; /* indigo-700 */
+        --text-main: #e0e7ff; /* indigo-100 */
+        --text-muted: #a5b4fc; /* indigo-300 */
+        --primary: #f472b6; /* pink-400 */
+        --primary-hover: #f9a8d4;
+        --border: #6366f1;
+        --shadow: #312e81;
+      }
+
+      /* DIVERSE NEW THEMES */
+      body[data-theme='sunset'] {
+        --bg-main: #4a0d0d;
+        --bg-card: #7f1d1d;
+        --bg-hover: #991b1b;
+        --text-main: #fef2f2;
+        --text-muted: #fca5a5;
+        --primary: #fbbf24; /* amber-400 */
+        --primary-hover: #f59e0b;
+        --border: #f87171;
+        --shadow: #450a0a;
+      }
+
+      body[data-theme='oceanic'] {
+        --bg-main: #042f2e; /* teal-950 */
+        --bg-card: #115e59; /* teal-800 */
+        --bg-hover: #134e4a; /* teal-900 */
+        --text-main: #ccfbf1; /* teal-100 */
+        --text-muted: #5eead4; /* teal-300 */
+        --primary: #2dd4bf; /* teal-400 */
+        --primary-hover: #14b8a6;
+        --border: #5eead4;
+        --shadow: #0f766e;
+      }
+
+      body[data-theme='terminal'] {
+        --bg-main: #0c0c0c;
+        --bg-card: #1a1a1a;
+        --bg-hover: #262626;
+        --text-main: #10b981; /* emerald-500 */
+        --text-muted: #059669; /* emerald-600 */
+        --primary: #10b981;
+        --primary-hover: #34d399;
+        --border: #333333;
+        --shadow: #000000;
+      }
+
+      body[data-theme='sakura'] {
+        --bg-main: #fff1f2; /* rose-50 */
+        --bg-card: #ffffff;
+        --bg-hover: #ffe4e6; /* rose-100 */
+        --text-main: #881337; /* rose-900 */
+        --text-muted: #be123c; /* rose-700 */
+        --primary: #fb7185; /* rose-400 */
+        --primary-hover: #f43f5e;
+        --border: #fda4af;
+        --shadow: #fecdd3;
+      }
+
+      body[data-theme='ember'] {
+        --bg-main: #1c1917; /* stone-900 */
+        --bg-card: #292524; /* stone-800 */
+        --bg-hover: #44403c; /* stone-700 */
+        --text-main: #fdba74; /* orange-300 */
+        --text-muted: #fb923c; /* orange-400 */
+        --primary: #ef4444; /* red-500 */
+        --primary-hover: #dc2626;
+        --border: #ef4444;
+        --shadow: #7f1d1d;
       }
 
       body { 
         font-family: 'Inter', sans-serif; 
         background-color: var(--bg-main);
         color: var(--text-main);
-        transition: background-color 0.3s ease, color 0.3s ease;
+        transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease;
       }
       h1, h2, h3, h4, h5, h6, .font-mono {
         font-family: 'IBM Plex Mono', monospace;
@@ -101,36 +250,43 @@
       .shadow-retro-lg {
         box-shadow: 6px 6px 0px 0px var(--shadow);
       }
-      .hover\:shadow-retro-hover:hover {
-        transform: translate(2px, 2px);
-        box-shadow: 2px 2px 0px 0px var(--shadow);
-      }
-      .active\:shadow-retro-active:active {
-        transform: translate(4px, 4px);
-        box-shadow: 0px 0px 0px 0px var(--shadow);
-      }
       
       /* Dynamic Border Utility */
       .border-theme {
         border-color: var(--border);
       }
 
-      /* Minimal Theme Overrides */
+      /* Minimal Theme Overrides & Improvements */
       body[data-theme='minimal'] .shadow-retro,
       body[data-theme='minimal'] .shadow-retro-sm,
       body[data-theme='minimal'] .shadow-retro-lg {
-        box-shadow: none; /* No shadow */
+        box-shadow: none !important; /* Force no shadow */
       }
       
-      /* Force 1px border for minimal theme instead of 2px */
+      /* Refine borders for minimal: thinner, cleaner */
       body[data-theme='minimal'] .border-2 {
         border-width: 1px !important;
       }
       
-      /* Specific Minimal Scrollbar */
+      /* Add subtle hover states for interactive elements in minimal mode since shadows are gone */
+      body[data-theme='minimal'] button:hover {
+        background-color: var(--bg-hover);
+      }
+      body[data-theme='minimal'] button.bg-black:hover,
+      body[data-theme='minimal'] button.bg-\[var\(--primary\)\]:hover {
+        background-color: var(--primary-hover); /* Keep primary buttons dark */
+        color: white;
+      }
+
+      /* Specific Minimal Scrollbar - Cleaner */
       body[data-theme='minimal'] ::-webkit-scrollbar { width: 6px; }
       body[data-theme='minimal'] ::-webkit-scrollbar-track { border: none; background: transparent; }
-      body[data-theme='minimal'] ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; border: none; }
+      body[data-theme='minimal'] ::-webkit-scrollbar-thumb { 
+        background: #d4d4d8; 
+        border-radius: 3px; 
+        border: none; 
+      }
+      body[data-theme='minimal'] ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
     </style>
   <script type="importmap">
 {

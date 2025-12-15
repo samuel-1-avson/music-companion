@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ICONS } from '../constants';
 import { AppView, SpotifyProfile } from '../types';
@@ -14,10 +15,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
     { id: AppView.DASHBOARD, label: 'Dashboard', icon: ICONS.Dashboard },
     { id: AppView.CHAT, label: 'Chat Assistant', icon: ICONS.MessageSquare },
     { id: AppView.LIVE, label: 'Live Mode', icon: ICONS.Live },
+    { id: AppView.PROFILE, label: 'My Profile', icon: ICONS.User }, 
     { id: AppView.OFFLINE, label: 'Offline Hub', icon: ICONS.Offline },
     { id: AppView.ARCADE, label: 'Retro Arcade', icon: ICONS.Game },
     { id: AppView.LAB, label: 'Sonic Lab', icon: ICONS.Sliders },
-    { id: AppView.EXTENSIONS, label: 'Extensions', icon: ICONS.Box },
+    { id: AppView.EXTENSIONS, label: 'Integrations', icon: ICONS.Box }, // Renamed from Extensions
     { id: AppView.SETTINGS, label: 'Settings', icon: ICONS.Settings },
   ];
 
@@ -76,7 +78,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
 
       <div className="p-4 border-t-2 border-theme bg-[var(--bg-hover)] space-y-4">
         {spotifyProfile ? (
-           <div className="bg-[var(--bg-card)] p-3 border-2 border-theme shadow-retro-sm flex items-center space-x-3">
+           <div 
+             className="bg-[var(--bg-card)] p-3 border-2 border-theme shadow-retro-sm flex items-center space-x-3 cursor-pointer hover:bg-gray-50 transition-colors"
+             onClick={() => onChangeView(AppView.PROFILE)}
+           >
              <div className="w-10 h-10 bg-gray-200 border border-black overflow-hidden flex-shrink-0">
                {spotifyProfile.images?.[0]?.url ? (
                  <img src={spotifyProfile.images[0].url} alt="Profile" className="w-full h-full object-cover" />
@@ -92,11 +97,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
              </div>
            </div>
         ) : (
-          <div className="bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm">
-            <p className="text-xs text-[var(--text-muted)] font-bold font-mono mb-2 uppercase tracking-wider">Status</p>
+          <div 
+            className="bg-[var(--bg-card)] p-4 border-2 border-theme shadow-retro-sm cursor-pointer hover:bg-gray-50"
+            onClick={() => onChangeView(AppView.PROFILE)}
+          >
             <div className="flex items-center space-x-2">
-              <span className="w-3 h-3 border-2 border-black bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-sm font-bold text-[var(--text-main)]">System Online</span>
+                <ICONS.User size={16} />
+                <span className="text-sm font-bold text-[var(--text-main)]">View Profile</span>
             </div>
           </div>
         )}

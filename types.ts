@@ -1,5 +1,4 @@
 
-
 export interface Song {
   id: string;
   title: string;
@@ -44,7 +43,24 @@ export interface SpotifyProfile {
   product?: string;
 }
 
-export type Theme = 'classic' | 'cyber' | 'forest' | 'lavender' | 'minimal';
+export type Theme = 
+  | 'classic' 
+  | 'cyber' 
+  | 'forest' 
+  | 'lavender' 
+  | 'minimal'
+  | 'midnight'
+  | 'solar'
+  | 'matrix'
+  | 'synthwave'
+  | 'glacier'
+  | 'obsidian'
+  | 'nebula'
+  | 'sunset'
+  | 'oceanic'
+  | 'terminal'
+  | 'sakura'
+  | 'ember';
 
 export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER';
 
@@ -57,7 +73,8 @@ export enum AppView {
   SETTINGS = 'SETTINGS',
   FOCUS = 'FOCUS',
   ARCADE = 'ARCADE',
-  OFFLINE = 'OFFLINE'
+  OFFLINE = 'OFFLINE',
+  PROFILE = 'PROFILE'
 }
 
 export interface LiveSessionStatus {
