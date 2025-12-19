@@ -28,23 +28,12 @@ const Settings: React.FC<SettingsProps> = ({
   
 
   const themes: { id: Theme; label: string; bg: string; color: string; tags: string[] }[] = [
-      { id: 'minimal', label: 'Minimal', bg: '#ffffff', color: '#18181b', tags: ['Focus', 'Clean'] },
-      { id: 'classic', label: 'Classic', bg: '#fcfbf9', color: '#fb923c', tags: ['Retro', 'Light'] },
-      { id: 'solar', label: 'Solar', bg: '#fff7ed', color: '#f97316', tags: ['Warm', 'Energy'] },
-      { id: 'forest', label: 'Forest', bg: '#f0fdf4', color: '#4ade80', tags: ['Nature', 'Fresh'] },
-      { id: 'glacier', label: 'Glacier', bg: '#f0f9ff', color: '#38bdf8', tags: ['Cool', 'Calm'] },
-      { id: 'lavender', label: 'Lavender', bg: '#faf5ff', color: '#d8b4fe', tags: ['Soft', 'Creative'] },
-      { id: 'sakura', label: 'Sakura', bg: '#fff1f2', color: '#fb7185', tags: ['Pink', 'Gentle'] },
-      { id: 'cyber', label: 'Cyber', bg: '#09090b', color: '#22d3ee', tags: ['Dark', 'Tech'] },
-      { id: 'midnight', label: 'Midnight', bg: '#0f172a', color: '#38bdf8', tags: ['Deep', 'Blue'] },
-      { id: 'obsidian', label: 'Obsidian', bg: '#050505', color: '#ffffff', tags: ['OLED', 'Focus'] },
-      { id: 'matrix', label: 'Matrix', bg: '#000000', color: '#00ff41', tags: ['Hacker', 'Green'] },
-      { id: 'terminal', label: 'Terminal', bg: '#0c0c0c', color: '#10b981', tags: ['Code', 'Mono'] },
-      { id: 'synthwave', label: 'Synthwave', bg: '#2e022d', color: '#f0abfc', tags: ['Neon', 'Vibe'] },
-      { id: 'nebula', label: 'Nebula', bg: '#1e1b4b', color: '#f472b6', tags: ['Space', 'Dream'] },
-      { id: 'oceanic', label: 'Oceanic', bg: '#042f2e', color: '#2dd4bf', tags: ['Teal', 'Deep'] },
-      { id: 'ember', label: 'Ember', bg: '#1c1917', color: '#ef4444', tags: ['Intense', 'Red'] },
-      { id: 'sunset', label: 'Sunset', bg: '#4a0d0d', color: '#fbbf24', tags: ['Warm', 'Dark'] },
+      { id: 'minimal', label: 'Minimalism', bg: '#ffffff', color: '#18181b', tags: ['Clarity', 'Focus'] },
+      { id: 'material', label: 'Material', bg: '#f5f5f5', color: '#6200ee', tags: ['Depth', 'Motion'] },
+      { id: 'neumorphism', label: 'Neumorphism', bg: '#e0e5ec', color: '#667eea', tags: ['Soft', 'Tactile'] },
+      { id: 'glass', label: 'Glassmorphism', bg: '#0f172a', color: '#f472b6', tags: ['Translucent', 'Modern'] },
+      { id: 'neobrutalism', label: 'Neo-Brutalism', bg: '#fffbeb', color: '#ef4444', tags: ['Bold', 'Raw'] },
+      { id: 'retro', label: 'Retro/Cyber', bg: '#2b213a', color: '#ff00ff', tags: ['Neon', 'Nostalgia'] },
   ];
 
   return (
@@ -107,7 +96,7 @@ const Settings: React.FC<SettingsProps> = ({
               
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {themes.map(t => {
-                      const isDark = ['cyber', 'midnight', 'matrix', 'synthwave', 'obsidian', 'nebula', 'oceanic', 'terminal', 'ember', 'sunset'].includes(t.id);
+                      const isDark = ['glass', 'retro'].includes(t.id);
                       const isActive = currentTheme === t.id;
                       
                       return (

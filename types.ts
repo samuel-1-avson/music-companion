@@ -44,24 +44,12 @@ export interface SpotifyProfile {
 }
 
 export type Theme = 
-  | 'classic' 
-  | 'cyber' 
-  | 'forest' 
-  | 'lavender' 
   | 'minimal'
-  | 'midnight'
-  | 'solar'
-  | 'matrix'
-  | 'synthwave'
-  | 'glacier'
-  | 'obsidian'
-  | 'nebula'
-  | 'sunset'
-  | 'oceanic'
-  | 'terminal'
-  | 'sakura'
-  | 'ember'
-  | 'high-contrast';
+  | 'material'
+  | 'neumorphism'
+  | 'glass'
+  | 'neobrutalism'
+  | 'retro';
 
 export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER' | 'LASTFM' | 'SOUNDCLOUD';
 

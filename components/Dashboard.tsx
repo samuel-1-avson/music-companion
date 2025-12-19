@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import MoodChart from './MoodChart';
-import { ICONS, MOCK_SONGS } from '../constants';
+import { ICONS } from '../constants';
 import { Song, AppView, MoodData, DashboardInsight, MusicProvider } from '../types';
 import { searchUnified } from '../services/musicService';
 import { generateDashboardInsights } from '../services/geminiService';
 import { getCurrentLocationWeather, WeatherData, getMoodPrompt } from '../services/weatherService';
 import { getListeningStreakDB, StreakData, getDailyChallengesDB, Challenge, getUserXPDB } from '../utils/db';
+import { useSpotifyData, SpotifyTrack } from '../hooks/useSpotifyData';
 
 interface DashboardProps {
   onPlaySong: (song: Song, queue?: Song[]) => void;
@@ -72,6 +73,37 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [userXP, setUserXP] = useState(0);
+
+  // Real Spotify data
+  const { topTracks, recentlyPlayed, hasSpotifyAccess, isLoading: spotifyLoading } = useSpotifyData();
+
+  // Convert Spotify track to Song format
+  const spotifyTrackToSong = (track: SpotifyTrack): Song => {
+    const minutes = Math.floor(track.duration_ms / 60000);
+    const seconds = Math.floor((track.duration_ms % 60000) / 1000);
+    return {
+      id: track.id,
+      title: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      album: track.album.name,
+      duration: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+      coverUrl: track.album.images[0]?.url || '',
+      previewUrl: undefined,
+      spotifyUri: track.uri,
+      externalUrl: track.external_urls.spotify,
+      mood: 'Spotify'
+    };
+  };
+
+  // Suggested songs - use real Spotify data or fallback to empty
+  const suggestedSongs = useMemo<Song[]>(() => {
+    // Prioritize top tracks, then recently played
+    const tracks = topTracks.length > 0 
+      ? topTracks.slice(0, 8) 
+      : recentlyPlayed.slice(0, 8).map(item => item.track);
+    
+    return tracks.map(spotifyTrackToSong);
+  }, [topTracks, recentlyPlayed]);
 
   // Time of day greeting
   const hour = new Date().getHours();
@@ -383,7 +415,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                
                                <div className="flex items-center gap-4">
                                    <button 
-                                     onClick={() => onPlaySong(MOCK_SONGS[0])}
+                                     onClick={() => onPlaySong(suggestedSongs[0])}
                                      className="px-6 py-2.5 bg-[var(--text-main)] text-[var(--bg-main)] rounded-full text-xs font-bold uppercase tracking-wide hover:opacity-80 transition-opacity"
                                    >
                                        {insight?.actionLabel || "Play Flow"}
@@ -504,7 +536,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                        </div>
                        
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                           {MOCK_SONGS.slice(0, 4).map((song, i) => (
+                           {suggestedSongs.slice(0, 4).map((song, i) => (
                                <div 
                                  key={song.id} 
                                  onClick={() => onPlaySong(song)}

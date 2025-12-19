@@ -43,17 +43,14 @@ const SentientBackground: React.FC<SentientBackgroundProps> = ({ mood, isPlaying
     nature:    ['#15803d', '#16a34a', '#3f6212', '#4d7c0f'], 
     dark:      ['#000000', '#18181b', '#27272a', '#09090b'], 
     default:   ['#18181b', '#27272a', '#18181b', '#000000'],
-    // Specific theme overrides
-    midnight:  ['#0f172a', '#1e293b', '#334155', '#38bdf8'],
-    matrix:    ['#002200', '#003300', '#001100', '#004400'],
-    synthwave: ['#4a044e', '#701a75', '#86198f', '#22d3ee'],
-    obsidian:  ['#000000', '#111111', '#222222', '#333333'],
-    nebula:    ['#312e81', '#4338ca', '#6366f1', '#f472b6'],
+    // Specific theme overrides for core 6
+    glass:     ['#0f172a', '#1e293b', '#334155', '#f472b6'], 
+    retro:     ['#2b213a', '#ff00ff', '#00ffff', '#ffff00'],
   };
 
   const getPalette = (m: string, t: string) => {
       // Determine if the current theme is primarily dark
-      const isDarkTheme = ['cyber', 'midnight', 'matrix', 'synthwave', 'obsidian', 'nebula'].includes(t);
+      const isDarkTheme = ['glass', 'retro'].includes(t);
       const map = isDarkTheme ? PALETTES_DARK : PALETTES_LIGHT;
       
       // If explicit theme exists in the map, use it regardless of mood
@@ -122,17 +119,13 @@ const SentientBackground: React.FC<SentientBackgroundProps> = ({ mood, isPlaying
 
       // Base background color logic
       let bg = '#ffffff'; // Default Light
-      if (theme === 'classic') bg = '#fcfbf9';
-      else if (theme === 'forest') bg = '#f0fdf4';
-      else if (theme === 'lavender') bg = '#faf5ff';
-      else if (theme === 'solar') bg = '#fff7ed';
-      else if (theme === 'glacier') bg = '#f0f9ff';
-      else if (theme === 'cyber') bg = '#09090b';
-      else if (theme === 'midnight') bg = '#0f172a';
-      else if (theme === 'matrix') bg = '#000000';
-      else if (theme === 'synthwave') bg = '#2e022d';
-      else if (theme === 'obsidian') bg = '#050505';
-      else if (theme === 'nebula') bg = '#1e1b4b';
+      
+      if (theme === 'minimal') bg = '#ffffff';
+      else if (theme === 'material') bg = '#f5f5f5';
+      else if (theme === 'neumorphism') bg = '#e0e5ec';
+      else if (theme === 'glass') bg = '#0f172a';
+      else if (theme === 'neobrutalism') bg = '#fffbeb';
+      else if (theme === 'retro') bg = '#2b213a';
 
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
@@ -200,7 +193,7 @@ const SentientBackground: React.FC<SentientBackgroundProps> = ({ mood, isPlaying
   }, [mood, isPlaying, theme]);
 
   const getNoiseOpacity = () => {
-      if (['cyber', 'midnight', 'matrix', 'synthwave', 'obsidian', 'nebula'].includes(theme)) return 0.3;
+      if (['glass', 'retro'].includes(theme)) return 0.3;
       if (theme === 'minimal') return 0.2; // Softer noise for minimal
       return 0.6;
   };

@@ -210,30 +210,46 @@ const App: React.FC = () => {
       if (!isSmartTheme) return;
 
       // 1. Context/View Based Overrides
-      if (currentView === AppView.ARCADE) { setTheme('synthwave'); return; }
-      if (currentView === AppView.LAB) { setTheme('terminal'); return; }
-      if (currentView === AppView.FOCUS) { setTheme('obsidian'); return; }
-      if (currentView === AppView.OFFLINE) { setTheme('minimal'); return; }
-
-      // 2. Song Mood Based
+      if (currentView === AppView.ARCADE) { setTheme('retro'); return; } // Gaming -> Retro/Cyberpunk
+      if (currentView === AppView.LAB) { setTheme('glass'); return; } // Lab -> Glassmorphism (High tech)
+      if (currentView === AppView.FOCUS) { setTheme('minimal'); return; } // Focus -> Minimalism (Distraction free)
+      
+      // 2. Song Mood Based Adaptation
       if (currentSong && currentSong.mood) {
           const mood = currentSong.mood.toLowerCase();
-          if (mood.includes('energy') || mood.includes('workout')) setTheme('ember');
-          else if (mood.includes('happy') || mood.includes('dance')) setTheme('solar');
-          else if (mood.includes('chill') || mood.includes('relax')) setTheme('glacier');
-          else if (mood.includes('focus') || mood.includes('study')) setTheme('midnight');
-          else if (mood.includes('sad') || mood.includes('deep')) setTheme('oceanic');
-          else if (mood.includes('nature')) setTheme('forest');
-          else if (mood.includes('love')) setTheme('sakura');
-          else if (mood.includes('cyber') || mood.includes('future')) setTheme('cyber');
-          else if (mood.includes('retro')) setTheme('sunset');
-          else setTheme('classic');
+          
+          if (mood.includes('energy') || mood.includes('workout') || mood.includes('intense')) {
+              // High Energy -> Neo-Brutalism (Bold, striking)
+              setTheme('neobrutalism');
+          }
+          else if (mood.includes('happy') || mood.includes('dance') || mood.includes('pop')) {
+              // Upbeat/General -> Material Design (Clean, familiar, vibrant)
+              setTheme('material');
+          }
+          else if (mood.includes('chill') || mood.includes('relax') || mood.includes('acoustic')) {
+              // Chill -> Neumorphism (Soft, pillowy, tactile)
+              setTheme('neumorphism');
+          }
+          else if (mood.includes('sad') || mood.includes('deep') || mood.includes('ethereal')) {
+              // Emotional/Deep -> Glassmorphism (Translucent, dreamy)
+              setTheme('glass');
+          }
+          else if (mood.includes('cyber') || mood.includes('electronic') || mood.includes('future')) {
+              // Electronic -> Retro/Cyberpunk (Neon, dark)
+              setTheme('retro');
+          }
+          else if (mood.includes('focus') || mood.includes('study') || mood.includes('classical')) {
+              // Focus -> Minimalism (Clean lines)
+              setTheme('minimal');
+          }
+          else {
+              setTheme('material'); // Default fallback
+          }
       } else {
-          // 3. Time of Day Fallback
+          // 3. Time of Day Fallback (If no song playing)
           const hour = new Date().getHours();
-          if (hour >= 20 || hour < 6) setTheme('midnight');
-          else if (hour >= 6 && hour < 11) setTheme('classic');
-          else if (hour >= 18 && hour < 20) setTheme('sunset');
+          if (hour >= 18 || hour < 6) setTheme('glass'); // Night -> Dark/Sleek Glass
+          else setTheme('material'); // Day -> Bright Material
       }
   }, [currentView, currentSong?.id, currentSong?.mood, isSmartTheme]);
 

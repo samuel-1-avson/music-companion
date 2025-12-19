@@ -26,6 +26,7 @@ interface IntegrationCardProps {
   onDisconnect: () => void;
   comingSoon?: boolean;
   isSystemMode?: boolean;
+  isStatic?: boolean;
 }
 
 const IntegrationCard: React.FC<IntegrationCardProps> = ({
@@ -36,6 +37,7 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
   icon: Icon,
   isConnected,
   isSystemMode,
+  isStatic,
   username,
   avatarUrl,
   onConnect,
@@ -104,7 +106,7 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
 
       {/* Action button */}
       <div className="mt-4">
-        {isConnected && !isSystemMode ? (
+        {isConnected && !isSystemMode && !isStatic ? (
           <button
             onClick={onDisconnect}
             className="w-full py-2 text-xs font-bold font-mono border-2 border-red-300 text-red-600 hover:bg-red-50 transition-colors"
@@ -118,6 +120,10 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
           >
             Not Available
           </button>
+        ) : isStatic ? (
+          <div className="w-full py-2 text-xs font-bold font-mono text-center text-green-600 bg-green-50 border-2 border-green-200">
+            ✓ Integrated
+          </div>
         ) : (
           <button
             onClick={onConnect}
@@ -242,13 +248,17 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
   };
 
   const handleDisconnect = async (provider: string) => {
-    if (provider === 'spotify' && onSpotifyDisconnect) {
-      onSpotifyDisconnect();
-    } else {
-      const disconnected = await disconnect(provider);
-      if (disconnected) {
-        success(`Disconnected from ${provider}`);
+    // Always use the backend disconnect endpoint for all providers
+    const disconnected = await disconnect(provider);
+    if (disconnected) {
+      success(`Disconnected from ${provider}`);
+      
+      // Also call the optional Spotify callback for any additional cleanup
+      if (provider === 'spotify' && onSpotifyDisconnect) {
+        onSpotifyDisconnect();
       }
+    } else {
+      showError(`Failed to disconnect from ${provider}`);
     }
   };
 
@@ -334,9 +344,11 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
   const getYoutubeIntegration = integrations.find(i => i.provider === 'youtube');
   const getLastfmIntegration = integrations.find(i => i.provider === 'lastfm');
 
-  // Check if Spotify is connected via OAuth identities only (not stale props)
-  // This ensures the status is always based on the current user's Supabase auth data
-  const spotifyIsConnected = isConnected('spotify') || hasSpotifyAccess;
+  // Check if Spotify is connected via user_integrations table ONLY
+  // This separates "logged in with Spotify" from "has Spotify music integration enabled"
+  // Note: hasSpotifyAccess is NOT used here because it checks Supabase identity which
+  // cannot be removed when Spotify is the only login method
+  const spotifyIsConnected = isConnected('spotify');
   const spotifyUsername = getSpotifyIntegration?.provider_username || spotifyProfile?.display_name;
   const spotifyAvatar = getSpotifyIntegration?.provider_avatar_url || spotifyProfile?.images?.[0]?.url;
 

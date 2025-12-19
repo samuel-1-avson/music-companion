@@ -1,0 +1,436 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* CLASSIC THEME (Default) */
+  --bg-main: #fcfbf9;
+  --bg-card: #ffffff;
+  --bg-hover: #f3f4f6;
+  --text-main: #1a1a1a;
+  --text-muted: #4b5563;
+  --primary: #fb923c; /* orange-400 */
+  --primary-hover: #f97316; /* orange-500 */
+  --border: #000000;
+  --shadow: #000000;
+  --text-on-primary: #000000; /* Default text color on primary bg */
+  
+  /* Defaults safe for all themes */
+  --glass-border: transparent;
+  --glass-bg: transparent;
+  --glass-blur: 0px;
+}
+
+/* --- EXISTING THEMES --- */
+
+body[data-theme='cyber'] {
+  --bg-main: #09090b;
+  --bg-card: #18181b;
+  --bg-hover: #27272a;
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --primary: #22d3ee; /* cyan-400 */
+  --primary-hover: #06b6d4;
+  --border: #22d3ee;
+  --shadow: #22d3ee;
+}
+
+body[data-theme='forest'] {
+  --bg-main: #f0fdf4;
+  --bg-card: #ffffff;
+  --bg-hover: #dcfce7;
+  --text-main: #14532d;
+  --text-muted: #15803d;
+  --primary: #4ade80; /* green-400 */
+  --primary-hover: #22c55e;
+  --border: #14532d;
+  --shadow: #14532d;
+}
+
+body[data-theme='lavender'] {
+  --bg-main: #faf5ff;
+  --bg-card: #ffffff;
+  --bg-hover: #f3e8ff;
+  --text-main: #3b0764;
+  --text-muted: #6b21a8;
+  --primary: #d8b4fe; /* purple-300 */
+  --primary-hover: #c084fc;
+  --border: #3b0764;
+  --shadow: #3b0764;
+}
+
+body[data-theme='midnight'] {
+  --bg-main: #0f172a; /* slate-900 */
+  --bg-card: #1e293b; /* slate-800 */
+  --bg-hover: #334155; /* slate-700 */
+  --text-main: #f1f5f9; /* slate-100 */
+  --text-muted: #94a3b8; /* slate-400 */
+  --primary: #38bdf8; /* sky-400 */
+  --primary-hover: #0ea5e9;
+  --border: #1e293b;
+  --shadow: #0f172a;
+}
+
+body[data-theme='solar'] {
+  --bg-main: #fff7ed; /* orange-50 */
+  --bg-card: #ffffff;
+  --bg-hover: #ffedd5; /* orange-100 */
+  --text-main: #9a3412; /* orange-900 */
+  --text-muted: #c2410c; /* orange-700 */
+  --primary: #f97316; /* orange-500 */
+  --primary-hover: #ea580c;
+  --border: #fb923c;
+  --shadow: #c2410c;
+}
+
+body[data-theme='matrix'] {
+  --bg-main: #000000;
+  --bg-card: #051a05;
+  --bg-hover: #0a2f0a;
+  --text-main: #00ff41;
+  --text-muted: #008f11;
+  --primary: #00ff41;
+  --primary-hover: #00cc00;
+  --border: #003b00;
+  --shadow: #002200;
+}
+
+body[data-theme='synthwave'] {
+  --bg-main: #2e022d; /* deep purple */
+  --bg-card: #4a044e; /* fuchsia-950/ish */
+  --bg-hover: #701a75;
+  --text-main: #f0abfc; /* fuchsia-300 */
+  --text-muted: #c026d3;
+  --primary: #22d3ee; /* cyan-400 */
+  --primary-hover: #e879f9; /* fuchsia-400 */
+  --border: #d946ef;
+  --shadow: #86198f;
+}
+
+body[data-theme='glacier'] {
+  --bg-main: #f0f9ff; /* sky-50 */
+  --bg-card: #ffffff;
+  --bg-hover: #e0f2fe; /* sky-100 */
+  --text-main: #0c4a6e; /* sky-900 */
+  --text-muted: #0369a1; /* sky-700 */
+  --primary: #38bdf8; /* sky-400 */
+  --primary-hover: #0ea5e9;
+  --border: #7dd3fc;
+  --shadow: #0284c7;
+}
+
+body[data-theme='obsidian'] {
+  --bg-main: #050505;
+  --bg-card: #111111;
+  --bg-hover: #222222;
+  --text-main: #e5e5e5;
+  --text-muted: #737373;
+  --primary: #ffffff;
+  --primary-hover: #d4d4d4;
+  --border: #333333;
+  --shadow: #000000;
+}
+
+body[data-theme='nebula'] {
+  --bg-main: #1e1b4b; /* indigo-950 */
+  --bg-card: #312e81; /* indigo-900 */
+  --bg-hover: #4338ca; /* indigo-700 */
+  --text-main: #e0e7ff; /* indigo-100 */
+  --text-muted: #a5b4fc; /* indigo-300 */
+  --primary: #f472b6; /* pink-400 */
+  --primary-hover: #f9a8d4;
+  --border: #6366f1;
+  --shadow: #312e81;
+}
+
+body[data-theme='sunset'] {
+  --bg-main: #4a0d0d;
+  --bg-card: #7f1d1d;
+  --bg-hover: #991b1b;
+  --text-main: #fef2f2;
+  --text-muted: #fca5a5;
+  --primary: #fbbf24; /* amber-400 */
+  --primary-hover: #f59e0b;
+  --border: #f87171;
+  --shadow: #450a0a;
+}
+
+body[data-theme='oceanic'] {
+  --bg-main: #042f2e; /* teal-950 */
+  --bg-card: #115e59; /* teal-800 */
+  --bg-hover: #134e4a; /* teal-900 */
+  --text-main: #ccfbf1; /* teal-100 */
+  --text-muted: #5eead4; /* teal-300 */
+  --primary: #2dd4bf; /* teal-400 */
+  --primary-hover: #14b8a6;
+  --border: #5eead4;
+  --shadow: #0f766e;
+}
+
+body[data-theme='terminal'] {
+  --bg-main: #0c0c0c;
+  --bg-card: #1a1a1a;
+  --bg-hover: #262626;
+  --text-main: #10b981; /* emerald-500 */
+  --text-muted: #059669; /* emerald-600 */
+  --primary: #10b981;
+  --primary-hover: #34d399;
+  --border: #333333;
+  --shadow: #000000;
+}
+
+body[data-theme='sakura'] {
+  --bg-main: #fff1f2; /* rose-50 */
+  --bg-card: #ffffff;
+  --bg-hover: #ffe4e6; /* rose-100 */
+  --text-main: #881337; /* rose-900 */
+  --text-muted: #be123c; /* rose-700 */
+  --primary: #fb7185; /* rose-400 */
+  --primary-hover: #f43f5e;
+  --border: #fda4af;
+  --shadow: #fecdd3;
+}
+
+body[data-theme='ember'] {
+  --bg-main: #1c1917; /* stone-900 */
+  --bg-card: #292524; /* stone-800 */
+  --bg-hover: #44403c; /* stone-700 */
+  --text-main: #fdba74; /* orange-300 */
+  --text-muted: #fb923c; /* orange-400 */
+  --primary: #ef4444; /* red-500 */
+  --primary-hover: #dc2626;
+  --border: #ef4444;
+  --shadow: #7f1d1d;
+}
+
+body[data-theme='high-contrast'] {
+  --bg-main: #000000;
+  --bg-card: #000000;
+  --bg-hover: #1a1a1a;
+  --text-main: #ffffff;
+  --text-muted: #e0e0e0;
+  --primary: #ffff00; /* Pure yellow */
+  --primary-hover: #ffcc00;
+  --border: #ffffff;
+  --shadow: #ffffff;
+}
+
+/* --- NEW REFINED THEMES --- */
+
+/* 1. MINIMALISM / FLAT DESIGN */
+body[data-theme='minimal'] {
+  --bg-main: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #f4f4f5; /* zinc-100 */
+  --text-main: #09090b; /* zinc-950 */
+  --text-muted: #71717a; /* zinc-500 */
+  --primary: #18181b; /* Black */
+  --primary-hover: #27272a;
+  --border: #e4e4e7; /* zinc-200 */
+  --shadow: transparent;
+  --text-on-primary: #ffffff; /* Black bg needs white text */
+}
+
+/* 2. MATERIAL DESIGN */
+body[data-theme='material'] {
+  --bg-main: #f5f5f5; /* Grey 100 */
+  --bg-card: #ffffff;
+  --bg-hover: #eeeeee;
+  --text-main: #212121; /* Grey 900 */
+  --text-muted: #757575; /* Grey 600 */
+  --primary: #6200ee; /* Deep Purple 500 */
+  --primary-hover: #3700b3;
+  --border: transparent; /* Material uses shadows, not borders */
+  --shadow: #9e9e9e; /* Shadow color for elevation */
+  --text-on-primary: #ffffff;
+}
+
+/* 3. NEUMORPHISM (Soft UI) */
+/* Light Mode Neumorphism */
+body[data-theme='neumorphism'] {
+  --bg-main: #e0e5ec;
+  --bg-card: #e0e5ec;
+  --bg-hover: #eef2f6; /* slightly lighter for hover state perception */
+  --text-main: #1a202c; /* gray-900 - Darker for readability */
+  --text-muted: #4a5568; /* gray-700 */
+  --primary: #667eea; /* indigo-500-ish */
+  --primary-hover: #5a67d8;
+  --border: transparent;
+  --shadow: thistle; /* Placeholder, unused directly in logic but triggers theme change */
+  
+  /* Neumorphic shadow variable pairs for custom utility classes */
+  --neu-shadow-light: #ffffff;
+  --neu-shadow-dark: #a3b1c6;
+  --text-on-primary: #ffffff;
+}
+
+/* 4. GLASSMORPHISM */
+body[data-theme='glass'] {
+  /* Rich gradient background will be handled by SentientBackground or global CSS body bg property if static */
+  --bg-main: #0f172a; /* Fallback slate-900 */
+  --bg-card: rgba(15, 23, 42, 0.6); /* Darker semi-transparent background for contrast */
+  --bg-hover: rgba(30, 41, 59, 0.7);
+  --text-main: #f8fafc; /* slate-50 */
+  --text-muted: #cbd5e1; /* slate-300 */
+  --primary: #f472b6; /* pink-400 */
+  --primary-hover: #f9a8d4;
+  --border: rgba(255, 255, 255, 0.2);
+  --shadow: transparent;
+  
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-blur: 12px;
+}
+
+/* 5. NEO-BRUTALISM */
+body[data-theme='neobrutalism'] {
+  --bg-main: #fffbeb; /* amber-50 */
+  --bg-card: #ffffff;
+  --bg-hover: #fcd34d; /* amber-300 - Aggressive hover */
+  --text-main: #000000;
+  --text-muted: #000000; /* No muted, everything bold */
+  --primary: #ef4444; /* red-500 - Clashing bright color */
+  --primary-hover: #dc2626;
+  --border: #000000;
+  --shadow: #000000;
+}
+
+/* 6. RETRO / CYBERPUNK (Distinct from simple 'cyber') */
+body[data-theme='retro'] {
+  --bg-main: #2b213a; /* Deep purple/navy */
+  --bg-card: #241b35; /* Slightly darker */
+  --bg-hover: #3d2e51;
+  --text-main: #e0ceff; /* Pale lavender for readability vs pure magenta */
+  --text-muted: #22d3ee; /* Cyan */
+  --primary: #ffff00; /* Yellow */
+  --primary-hover: #ff9900;
+  --border: #ff00ff;
+  --shadow: #00ffff;
+}
+
+
+/* --- CORE STYLES --- */
+
+body { 
+  font-family: 'Inter', sans-serif; 
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease;
+}
+
+h1, h2, h3, h4, h5, h6, .font-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* SCROLLBARS */
+::-webkit-scrollbar { width: 12px; }
+::-webkit-scrollbar-track { 
+  background: var(--bg-main); 
+  border-left: 2px solid var(--border); 
+}
+::-webkit-scrollbar-thumb { 
+  background: var(--border); 
+  border: 2px solid var(--bg-main);
+  border-radius: 0; 
+}
+::-webkit-scrollbar-thumb:hover { background: #333; }
+
+/* UTILITIES */
+.shadow-retro { box-shadow: 4px 4px 0px 0px var(--shadow); }
+.shadow-retro-sm { box-shadow: 2px 2px 0px 0px var(--shadow); }
+.shadow-retro-lg { box-shadow: 6px 6px 0px 0px var(--shadow); }
+.border-theme { border-color: var(--border); }
+
+
+/* --- THEME SPECIFIC OVERRIDES --- */
+
+/* Minimal */
+body[data-theme='minimal'] .shadow-retro,
+body[data-theme='minimal'] .shadow-retro-sm,
+body[data-theme='minimal'] .shadow-retro-lg { box-shadow: none !important; }
+body[data-theme='minimal'] .border-2 { border-width: 1px !important; }
+body[data-theme='minimal'] button:hover { background-color: var(--bg-hover); }
+body[data-theme='minimal'] button.bg-black:hover,
+body[data-theme='minimal'] button.bg-\[var\(--primary\)\]:hover {
+  background-color: var(--primary-hover);
+  color: white;
+}
+body[data-theme='minimal'] ::-webkit-scrollbar { width: 6px; }
+body[data-theme='minimal'] ::-webkit-scrollbar-track { border: none; background: transparent; }
+body[data-theme='minimal'] ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; border: none; }
+body[data-theme='minimal'] ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+/* Material */
+body[data-theme='material'] .shadow-retro { box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; }
+body[data-theme='material'] .shadow-retro-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24) !important; }
+body[data-theme='material'] .shadow-retro-lg { box-shadow: 0 10px 15px rgba(0,0,0,0.1) !important; }
+body[data-theme='material'] .border-2, 
+body[data-theme='material'] .border { border: none !important; } /* Material reduces borders */
+body[data-theme='material'] button {
+    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    border-radius: 4px; /* Slight rounded */
+}
+
+/* Neumorphism */
+body[data-theme='neumorphism'] {
+    background-color: #e0e5ec;
+}
+body[data-theme='neumorphism'] .shadow-retro,
+body[data-theme='neumorphism'] .shadow-retro-sm,
+body[data-theme='neumorphism'] .shadow-retro-lg {
+    box-shadow: 9px 9px 16px rgb(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5) !important;
+    border: none !important;
+    border-radius: 16px; /* Soft roundness */
+}
+body[data-theme='neumorphism'] input,
+body[data-theme='neumorphism'] .bg-card, 
+body[data-theme='neumorphism'] button {
+    border-radius: 12px;
+}
+body[data-theme='neumorphism'] button:active {
+    box-shadow: inset 6px 6px 10px 0 rgba(163,177,198, 0.7), inset -6px -6px 10px 0 rgba(255,255,255, 0.8) !important;
+}
+
+/* Glassmorphism */
+body[data-theme='glass'] .bg-card,
+body[data-theme='glass'] .bg-main {
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+body[data-theme='glass'] .shadow-retro,
+body[data-theme='glass'] .shadow-retro-sm { box-shadow: none !important; }
+
+/* Neo-Brutalism */
+body[data-theme='neobrutalism'] .shadow-retro { box-shadow: 5px 5px 0px 0px #000 !important; }
+body[data-theme='neobrutalism'] .shadow-retro-sm { box-shadow: 3px 3px 0px 0px #000 !important; }
+body[data-theme='neobrutalism'] .border-2,
+body[data-theme='neobrutalism'] .border { border-width: 3px !important; border-color: #000 !important; }
+body[data-theme='neobrutalism'] * { font-weight: 700 !important; }
+body[data-theme='neobrutalism'] button { 
+    border: 3px solid #000; 
+    box-shadow: 4px 4px 0 #000;
+    transition: all 0.1s;
+}
+body[data-theme='neobrutalism'] button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 #000;
+}
+
+/* Retro */
+body[data-theme='retro'] * { font-family: 'IBM Plex Mono', monospace !important; }
+body[data-theme='retro'] .limit-font { font-family: 'IBM Plex Mono', monospace !important; }
+body[data-theme='retro'] .shadow-retro,
+body[data-theme='retro'] .shadow-retro-sm { 
+    box-shadow: 4px 0px 0px 0px var(--shadow), -4px 0px 0px 0px var(--primary) !important; /* Glitch effect shadow */
+}
+
+/* High Contrast & Accessibility */
+body[data-theme='high-contrast'] * { font-weight: 500 !important; }
+body[data-theme='high-contrast'] button,
+body[data-theme='high-contrast'] a { text-decoration: underline; }
+body[data-theme='high-contrast'] .border-2 { border-width: 3px !important; }

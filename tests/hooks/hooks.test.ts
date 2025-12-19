@@ -171,27 +171,27 @@ describe('useTheme Hook', () => {
   it('should initialize with default theme', () => {
     const { result } = renderHook(() => useTheme());
     
-    expect(result.current.theme).toBe('classic');
+    expect(result.current.theme).toBe('minimal');
   });
 
   it('should set theme', () => {
     const { result } = renderHook(() => useTheme());
     
     act(() => {
-      result.current.setTheme('midnight');
+      result.current.setTheme('glass');
     });
     
-    expect(result.current.theme).toBe('midnight');
+    expect(result.current.theme).toBe('glass');
   });
 
   it('should persist theme to localStorage', () => {
     const { result } = renderHook(() => useTheme());
     
     act(() => {
-      result.current.setTheme('neon');
+      result.current.setTheme('retro');
     });
     
-    expect(localStorage.getItem('theme')).toBe('neon');
+    expect(localStorage.getItem('theme')).toBe('retro');
   });
 
   it('should cycle themes', () => {
@@ -209,7 +209,7 @@ describe('useTheme Hook', () => {
     const { result } = renderHook(() => useTheme());
     
     expect(result.current.themes.length).toBeGreaterThan(0);
-    expect(result.current.themes).toContain('classic');
-    expect(result.current.themes).toContain('midnight');
+    expect(result.current.themes).toContain('minimal');
+    expect(result.current.themes).toContain('glass');
   });
 });

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '../utils/supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { tokenManager, SpotifyTokens as TokenManagerTokens } from '../services/TokenManager';
 
 // User profile type
 export interface UserProfile {
@@ -145,6 +146,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const profile = await fetchProfile(session.user.id);
         const spotifyTokens = extractSpotifyTokens(session);
         
+        // Sync to TokenManager for proactive refresh
+        if (spotifyTokens) {
+          tokenManager.setTokens(spotifyTokens);
+          console.log('[Auth] Spotify connected via OAuth, synced to TokenManager');
+        }
+        
         setState({
           user: session.user,
           profile,
@@ -153,10 +160,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           spotifyTokens,
         });
-        
-        if (spotifyTokens) {
-          console.log('[Auth] Spotify connected via OAuth');
-        }
       } else {
         setState(prev => ({ ...prev, isLoading: false }));
       }
@@ -170,6 +173,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const profile = await fetchProfile(session.user.id);
         const spotifyTokens = extractSpotifyTokens(session);
         
+        // Sync to TokenManager for proactive refresh
+        if (spotifyTokens) {
+          tokenManager.setTokens(spotifyTokens);
+          console.log('[Auth] Spotify tokens updated, synced to TokenManager');
+        }
+        
         setState({
           user: session.user,
           profile,
@@ -178,10 +187,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           spotifyTokens,
         });
-        
-        if (spotifyTokens) {
-          console.log('[Auth] Spotify tokens updated');
-        }
       } else {
         setState({
           user: null,
@@ -344,20 +349,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   }, []);
 
-  // Refresh Spotify token (uses Supabase session refresh)
+  // Refresh Spotify token (uses TokenManager with deduplication)
   const refreshSpotifyToken = useCallback(async (): Promise<SpotifyTokens | null> => {
     try {
+      // Use TokenManager for refresh with deduplication and retry logic
+      const tokens = await tokenManager.refreshToken();
+      
+      if (tokens) {
+        setState(prev => ({ ...prev, spotifyTokens: tokens }));
+        console.log('[Auth] Token refresh successful via TokenManager');
+        return tokens;
+      }
+      
+      // Fallback to Supabase session refresh if TokenManager fails
+      console.log('[Auth] Falling back to Supabase session refresh');
       const { data: { session }, error } = await supabase.auth.refreshSession();
       if (error) {
         console.error('[Auth] Error refreshing session:', error);
         return null;
       }
       
-      const tokens = extractSpotifyTokens(session);
-      if (tokens) {
-        setState(prev => ({ ...prev, spotifyTokens: tokens, session }));
+      const sessionTokens = extractSpotifyTokens(session);
+      if (sessionTokens) {
+        tokenManager.setTokens(sessionTokens);
+        setState(prev => ({ ...prev, spotifyTokens: sessionTokens, session }));
       }
-      return tokens;
+      return sessionTokens;
     } catch (error) {
       console.error('[Auth] Error refreshing Spotify token:', error);
       return null;

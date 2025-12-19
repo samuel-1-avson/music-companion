@@ -49,9 +49,12 @@ export function useIntegrations() {
         console.error('[Integrations] Auth error:', authError);
       } else if (authUser?.identities) {
         // Map Supabase identities to our format
+        // NOTE: Spotify is EXCLUDED here because Supabase won't unlink the last identity
+        // Spotify integration should only come from user_integrations table
         for (const identity of authUser.identities) {
           const provider = identity.provider as Integration['provider'];
-          if (['spotify', 'discord', 'twitch'].includes(provider)) {
+          // Only include Discord and Twitch from auth identities (not Spotify)
+          if (['discord', 'twitch'].includes(provider)) {
             allIntegrations.push({
               id: identity.id,
               provider,
@@ -117,8 +120,8 @@ export function useIntegrations() {
 
   /**
    * Connect to a provider using OAuth
-   * - Spotify uses Supabase OAuth with linkIdentity (for existing users)
-   * - Discord/YouTube use backend OAuth
+   * ALL providers now use backend OAuth to avoid Supabase identity conflicts
+   * Tokens are stored in user_integrations table, not as Supabase identities
    */
   const connectOAuth = useCallback(async (provider: 'spotify' | 'discord' | 'twitch' | 'youtube' | 'lastfm') => {
     if (!isAuthenticated || !user) {
@@ -129,28 +132,10 @@ export function useIntegrations() {
     try {
       console.log(`[Integrations] Connecting to ${provider}...`);
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-      // Spotify uses Supabase linkIdentity (links to existing account)
-      if (provider === 'spotify') {
-        const { error } = await supabase.auth.linkIdentity({
-          provider: 'spotify',
-          options: {
-            redirectTo: `${window.location.origin}/integrations?spotify_connected=true`,
-            scopes: 'user-read-email user-read-private user-library-read user-library-modify streaming user-read-playback-state user-modify-playback-state user-read-recently-played playlist-read-private playlist-modify-public playlist-modify-private',
-          },
-        });
-        if (error) throw error;
-        return true;
-      }
-
-      // Last.fm specific flow
-      if (provider === 'lastfm') {
-        window.location.href = `${backendUrl}/auth/lastfm?user_id=${user.id}`;
-        return true;
-      }
-
-      // Other providers use backend OAuth
       const userEmail = user.email || '';
+
+      // ALL providers use backend OAuth (stores in user_integrations table)
+      // This avoids Supabase "account already linked" conflicts
       window.location.href = `${backendUrl}/auth/${provider}?user_id=${user.id}&user_email=${encodeURIComponent(userEmail)}`;
       return true;
     } catch (err: any) {
@@ -189,48 +174,71 @@ export function useIntegrations() {
 
   /**
    * Disconnect a provider
-   * For OAuth providers, uses Supabase unlinkIdentity
+   * Uses backend endpoint to delete from user_integrations table
+   * For Discord/Twitch, also attempts to unlink Supabase auth identity
+   * For Spotify, only uses backend since Spotify tokens are only in user_integrations
    */
   const disconnect = useCallback(async (provider: string) => {
     if (!user) return false;
 
     try {
-      // For OAuth providers (Spotify, Discord, Twitch), unlink from Supabase auth
-      if (['spotify', 'discord', 'twitch'].includes(provider)) {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        const identity = authUser?.identities?.find(i => i.provider === provider);
-        
-        if (identity) {
-          console.log(`[Integrations] Unlinking ${provider} identity:`, identity.id);
-          const { error: unlinkError } = await supabase.auth.unlinkIdentity(identity);
-          
-          if (unlinkError) {
-            console.error(`[Integrations] Unlink ${provider} error:`, unlinkError);
-          } else {
-            console.log(`[Integrations] Successfully unlinked ${provider}`);
-          }
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      
+      console.log(`[Integrations] Disconnecting ${provider}...`);
+      
+      // Call backend disconnect endpoint to remove from user_integrations table
+      const response = await fetch(`${backendUrl}/auth/disconnect/${provider}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error(`[Integrations] Disconnect ${provider} failed:`, data.error);
+      }
+
+      // For Spotify: clear TokenManager and localStorage tokens
+      if (provider === 'spotify') {
+        try {
+          const { tokenManager } = await import('../services/TokenManager');
+          tokenManager.clear();
+          console.log('[Integrations] Cleared Spotify tokens from TokenManager');
+          localStorage.removeItem('spotify_tokens');
+        } catch (e) {
+          console.warn('[Integrations] Could not clear TokenManager:', e);
         }
       }
 
-      // Also remove from user_integrations table (for Telegram, Last.fm, etc.)
-      const { error } = await supabase
-        .from('user_integrations')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('provider', provider);
-
-      if (error) {
-        console.warn('[Integrations] Custom table delete error:', error.message);
+      // For Discord/Twitch: also try to unlink from Supabase auth (if they were linked)
+      // Note: Spotify is NOT included here since we no longer use Supabase identities for it
+      if (['discord', 'twitch'].includes(provider)) {
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const identity = authUser?.identities?.find(i => i.provider === provider);
+          
+          if (identity) {
+            console.log(`[Integrations] Unlinking ${provider} identity...`);
+            const { error: unlinkError } = await supabase.auth.unlinkIdentity(identity);
+            
+            if (unlinkError) {
+              console.warn(`[Integrations] Could not unlink ${provider} identity:`, unlinkError.message);
+            } else {
+              console.log(`[Integrations] Successfully unlinked ${provider} identity`);
+            }
+          }
+        } catch (identityError: any) {
+          console.warn(`[Integrations] Identity unlink error:`, identityError.message);
+        }
       }
 
-      // Remove from local state
+      // Remove from local state immediately for responsive UI
       setIntegrations(prev => prev.filter(i => i.provider !== provider));
-      console.log(`[Integrations] ${provider} disconnected`);
+      console.log(`[Integrations] ${provider} disconnected successfully`);
       
-      // Reload to refresh state
-      if (['spotify', 'discord', 'twitch'].includes(provider)) {
-        setTimeout(() => window.location.reload(), 500);
-      }
+      // Reload integrations to sync state
+      await loadIntegrations();
       
       return true;
     } catch (err: any) {
@@ -238,7 +246,7 @@ export function useIntegrations() {
       setError(err.message);
       return false;
     }
-  }, [user]);
+  }, [user, loadIntegrations]);
 
   /**
    * Get integration by provider

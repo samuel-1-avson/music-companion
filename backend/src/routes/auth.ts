@@ -820,4 +820,93 @@ router.get('/status', (req, res) => {
   });
 });
 
+/**
+ * Disconnect a provider integration
+ * DELETE /auth/disconnect/:provider
+ * Body: { user_id: string }
+ */
+router.delete('/disconnect/:provider', async (req, res) => {
+  const { provider } = req.params;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  const validProviders = ['spotify', 'discord', 'youtube', 'lastfm', 'telegram', 'twitch'];
+  if (!validProviders.includes(provider)) {
+    return res.status(400).json({ success: false, error: `Invalid provider: ${provider}` });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+
+    // Delete from user_integrations table
+    const response = await axios.delete(
+      `${config.supabase.url}/rest/v1/user_integrations?user_id=eq.${user_id}&provider=eq.${provider}`,
+      {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        }
+      }
+    );
+
+    console.log(`[Auth] Disconnected ${provider} for user ${user_id}`);
+    return res.json({ success: true, message: `Disconnected from ${provider}` });
+  } catch (err: any) {
+    console.error(`[Auth] Disconnect ${provider} error:`, err.response?.data || err.message);
+    return res.status(500).json({ success: false, error: 'Failed to disconnect' });
+  }
+});
+
+/**
+ * Disconnect via POST (alternative for clients that don't support DELETE body)
+ * POST /auth/disconnect/:provider
+ */
+router.post('/disconnect/:provider', async (req, res) => {
+  const { provider } = req.params;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  const validProviders = ['spotify', 'discord', 'youtube', 'lastfm', 'telegram', 'twitch'];
+  if (!validProviders.includes(provider)) {
+    return res.status(400).json({ success: false, error: `Invalid provider: ${provider}` });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+
+    // Delete from user_integrations table
+    await axios.delete(
+      `${config.supabase.url}/rest/v1/user_integrations?user_id=eq.${user_id}&provider=eq.${provider}`,
+      {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        }
+      }
+    );
+
+    console.log(`[Auth] Disconnected ${provider} for user ${user_id}`);
+    return res.json({ success: true, message: `Disconnected from ${provider}` });
+  } catch (err: any) {
+    console.error(`[Auth] Disconnect ${provider} error:`, err.response?.data || err.message);
+    return res.status(500).json({ success: false, error: 'Failed to disconnect' });
+  }
+});
+
 export default router;

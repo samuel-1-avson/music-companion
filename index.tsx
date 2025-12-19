@@ -2,6 +2,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { WrappedApp } from './App';
+import './index.css';
+import { setupGlobalErrorHandlers } from './services/ErrorService';
+
+// Setup global error handlers for unhandled rejections and errors
+setupGlobalErrorHandlers();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

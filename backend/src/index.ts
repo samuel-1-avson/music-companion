@@ -21,6 +21,9 @@ import webhookRoutes from './routes/webhooks.js';
 import downloadsRoutes from './routes/downloads.js';
 import telegramRoutes from './routes/telegram.js';
 
+// Import middleware
+import { authRateLimit, aiRateLimit, downloadRateLimit, searchRateLimit, generalRateLimit } from './middleware/rateLimitMiddleware.js';
+
 // Import types
 import type { ServerToClientEvents, ClientToServerEvents } from './types/index.js';
 
@@ -97,14 +100,14 @@ app.get('/', (req, res) => {
   });
 });
 
-// Mount route modules
-app.use('/auth', authRoutes);
-app.use('/api/music', musicRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/dev', developerRoutes);
-app.use('/api/webhooks', webhookRoutes);
-app.use('/api/downloads', downloadsRoutes);
-app.use('/auth/telegram', telegramRoutes);
+// Mount route modules with rate limiting
+app.use('/auth', authRateLimit, authRoutes);
+app.use('/api/music', searchRateLimit, musicRoutes);
+app.use('/api/ai', aiRateLimit, aiRoutes);
+app.use('/api/dev', generalRateLimit, developerRoutes);
+app.use('/api/webhooks', generalRateLimit, webhookRoutes);
+app.use('/api/downloads', downloadRateLimit, downloadsRoutes);
+app.use('/auth/telegram', authRateLimit, telegramRoutes);
 
 // --- ERROR HANDLING ---
 

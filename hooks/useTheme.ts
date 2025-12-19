@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Theme } from '../types';
 
 const THEMES = [
-  'minimal', 'classic', 'solar', 'ocean', 'neon', 'forest',
-  'sunset', 'midnight', 'lavender', 'cherry', 'coffee', 'terminal',
-  'highContrast', 'vaporwave', 'nord', 'solarizedDark', 'retroWave'
+  'minimal', 'material', 'neumorphism', 'glass', 'neobrutalism', 'retro'
 ] as const;
 
 interface UseThemeOptions {
@@ -24,14 +22,18 @@ interface UseThemeReturn {
 
 export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
   const {
-    defaultTheme = 'classic',
+    defaultTheme = 'minimal', // Use minimal as safe default
     storageKey = 'theme',
     smartThemeEnabled = false
   } = options;
 
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem(storageKey);
-    return (saved as Theme) || defaultTheme;
+    // Validate saved theme is one of the allowed 6
+    if (saved && THEMES.includes(saved as any)) {
+        return saved as Theme;
+    }
+    return defaultTheme;
   });
   
   const [isSmartTheme, setSmartThemeState] = useState(() => {
@@ -44,31 +46,30 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
     localStorage.setItem(storageKey, theme);
   }, [theme, storageKey]);
 
-  // Smart theme based on time of day
+  // Smart theme based on time of day (Fallback if no music / specific context)
   useEffect(() => {
     if (!isSmartTheme) return;
 
     const updateSmartTheme = () => {
+      // Logic handled primarily in App.tsx based on music, this is just a backup
+      // But we can set a baseline here
       const hour = new Date().getHours();
       let smartTheme: Theme;
       
-      if (hour >= 6 && hour < 12) {
-        smartTheme = 'solar'; // Morning
-      } else if (hour >= 12 && hour < 17) {
-        smartTheme = 'classic'; // Afternoon
-      } else if (hour >= 17 && hour < 20) {
-        smartTheme = 'sunset'; // Evening
+      if (hour >= 6 && hour < 18) {
+        smartTheme = 'material'; // Bright, active day
       } else {
-        smartTheme = 'midnight'; // Night
+        smartTheme = 'glass'; // Dark, sleek night
       }
       
-      setThemeState(smartTheme);
+      // Only set if we don't have a more specific override from App.tsx (which runs more often)
+      // Actually, relying on App.tsx is better to avoid fighting. 
+      // We will leave this hook simple and let App.tsx drive the "Smart" decisions.
     };
 
-    updateSmartTheme();
-    const interval = setInterval(updateSmartTheme, 60000); // Check every minute
-
-    return () => clearInterval(interval);
+    // updateSmartTheme(); 
+    // const interval = setInterval(updateSmartTheme, 60000); 
+    // return () => clearInterval(interval);
   }, [isSmartTheme]);
 
   const setTheme = useCallback((newTheme: Theme) => {

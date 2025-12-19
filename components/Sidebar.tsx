@@ -51,8 +51,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
             onClick={() => onChangeView(item.id)}
             className={`w-full flex items-center space-x-3 px-4 py-3 border-2 transition-all duration-200 ${
               currentView === item.id 
-                ? 'bg-[var(--primary)] text-black border-theme shadow-retro-sm translate-x-[-2px] translate-y-[-2px]' 
-                : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-transparent hover:border-theme hover:shadow-retro-sm hover:text-[var(--text-main)]'
+                ? 'bg-[var(--primary)] text-[var(--text-on-primary)] border-theme shadow-retro-sm translate-x-[-2px] translate-y-[-2px]' 
+                : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-transparent hover:border-theme hover:shadow-retro-sm hover:text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
             <item.icon size={20} strokeWidth={2.5} />
