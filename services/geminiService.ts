@@ -5,9 +5,43 @@ import { searchSpotifyTrack } from './spotifyService';
 import { searchUnified } from './musicService';
 
 // Ensure API Key is available
-const apiKey = process.env.API_KEY || '';
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey });
+
+// --- Rate Limiting & Caching ---
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_CALLS_PER_WINDOW = 10;
+let callTimestamps: number[] = [];
+
+// Simple cache to prevent duplicate calls
+const cache: Map<string, { data: any; expires: number }> = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const checkRateLimit = (): boolean => {
+  const now = Date.now();
+  callTimestamps = callTimestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (callTimestamps.length >= MAX_CALLS_PER_WINDOW) {
+    console.warn('[Gemini] Rate limit reached, waiting...');
+    return false;
+  }
+  callTimestamps.push(now);
+  return true;
+};
+
+const getCached = <T>(key: string): T | null => {
+  const entry = cache.get(key);
+  if (entry && entry.expires > Date.now()) {
+    return entry.data as T;
+  }
+  cache.delete(key);
+  return null;
+};
+
+const setCache = (key: string, data: any): void => {
+  cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+};
+
 
 export const generateGreeting = async (
   userName: string,
@@ -347,7 +381,107 @@ export const recommendNextSong = async (currentSong: Song, recentHistory: Song[]
   }
 };
 
+/**
+ * Smart DJ Mode - Generate multiple songs at once for seamless queue
+ * Pre-fetches songs to maintain a continuous flow
+ */
+export const generateSmartDJQueue = async (
+  seedSongs: Song[],
+  mood: string = 'mixed',
+  energyLevel: 'low' | 'medium' | 'high' = 'medium',
+  count: number = 5
+): Promise<Song[]> => {
+  if (!apiKey) return [];
+  const model = "gemini-2.5-flash";
+
+  const seedStr = seedSongs.slice(-5).map(s => `"${s.title}" by ${s.artist}`).join(", ");
+  const energyDesc = energyLevel === 'high' ? 'upbeat, energetic' : 
+                     energyLevel === 'low' ? 'calm, chill' : 'balanced';
+
+  const prompt = `
+    You are a Smart DJ creating a seamless music experience.
+    
+    Recent plays: ${seedStr}
+    Desired mood: ${mood}
+    Energy: ${energyDesc}
+    
+    Generate ${count} song recommendations that flow naturally together.
+    Create a journey that evolves while staying cohesive.
+    Mix familiar vibes with interesting discoveries.
+    
+    Return a JSON array of songs. Each song needs: title, artist, mood, duration.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            songs: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  artist: { type: Type.STRING },
+                  mood: { type: Type.STRING },
+                  duration: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{"songs": []}');
+    
+    if (!result.songs || result.songs.length === 0) return [];
+
+    // Search for each song to get playable versions
+    const resolvedSongs: Song[] = [];
+    
+    for (const song of result.songs.slice(0, count)) {
+      try {
+        const query = `${song.artist} - ${song.title}`;
+        const searchResults = await searchUnified('YOUTUBE', query);
+        if (searchResults.length > 0) {
+          resolvedSongs.push({
+            ...searchResults[0],
+            mood: song.mood // Keep AI-assigned mood
+          });
+        } else {
+          // Fallback to AI-generated data
+          resolvedSongs.push({
+            id: `smartdj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            title: song.title,
+            artist: song.artist,
+            mood: song.mood,
+            duration: song.duration || '3:30',
+            coverUrl: `https://picsum.photos/200/200?random=${Math.floor(Math.random() * 1000)}`
+          });
+        }
+      } catch (e) {
+        // Skip song on error
+        console.warn('[SmartDJ] Failed to resolve:', song.title);
+      }
+    }
+
+    console.log(`[SmartDJ] Generated ${resolvedSongs.length} songs for queue`);
+    return resolvedSongs;
+
+  } catch (e) {
+    console.error("[SmartDJ] Queue generation error:", e);
+    return [];
+  }
+};
+
 export const generateDJTransition = async (prevSong: Song, nextSong: Song): Promise<string> => {
+
   if (!apiKey) return "";
   const model = "gemini-2.5-flash";
 
@@ -381,6 +515,201 @@ export const analyzeSongMeaning = async (artist: string, title: string, lyrics: 
     return response.text?.trim() || "Analysis unavailable.";
   } catch (e) {
     return "Analysis unavailable.";
+  }
+};
+
+/**
+ * Phase 4: Lyrics Sentiment Analysis
+ * Analyzes lyrics for mood, themes, emotions, and energy level
+ */
+export interface LyricsSentiment {
+  mood: string;
+  themes: string[];
+  emotions: string[];
+  energy: 'low' | 'medium' | 'high';
+  summary: string;
+}
+
+export const analyzeLyricsSentiment = async (lyrics: string, title: string, artist: string): Promise<LyricsSentiment | null> => {
+  if (!apiKey || !lyrics) return null;
+  const model = "gemini-2.5-flash";
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: `Analyze the sentiment and emotions in these lyrics from "${title}" by "${artist}":
+
+"${lyrics.substring(0, 500)}..."
+
+Identify:
+1. Overall mood (one word, e.g., melancholic, euphoric, introspective)
+2. Key themes (2-4 themes like love, loss, hope, rebellion)
+3. Primary emotions (2-4 emotions like joy, sadness, anger, nostalgia)
+4. Energy level (low, medium, or high)
+5. Brief summary (1-2 sentences)
+
+Return as JSON.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            mood: { type: Type.STRING },
+            themes: { type: Type.ARRAY, items: { type: Type.STRING } },
+            emotions: { type: Type.ARRAY, items: { type: Type.STRING } },
+            energy: { type: Type.STRING },
+            summary: { type: Type.STRING }
+          }
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    return {
+      mood: result.mood || 'Unknown',
+      themes: result.themes || [],
+      emotions: result.emotions || [],
+      energy: result.energy || 'medium',
+      summary: result.summary || ''
+    };
+  } catch (e) {
+    console.error('[Sentiment] Analysis failed:', e);
+    return null;
+  }
+};
+
+/**
+ * Phase 4: Personalized Radio Station
+ * Generates infinite radio based on seed artist/song/mood
+ */
+export const generateRadioStation = async (
+  seed: { type: 'artist' | 'song' | 'mood'; value: string },
+  recentPlays: Song[] = [],
+  count: number = 5
+): Promise<Song[]> => {
+  if (!apiKey) return [];
+  const model = "gemini-2.5-flash";
+
+  const recentStr = recentPlays.slice(-5).map(s => `${s.artist} - ${s.title}`).join(", ");
+  
+  const prompt = `You are a radio DJ creating a personalized station.
+  
+  Station based on: ${seed.type} = "${seed.value}"
+  ${recentStr ? `Recently played (avoid these): ${recentStr}` : ''}
+  
+  Generate ${count} songs that fit this station perfectly.
+  Include a mix of:
+  - 60% similar to the seed
+  - 30% related discoveries
+  - 10% wildcards that still fit
+  
+  Return JSON with songs array. Each song: title, artist, mood, duration.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            songs: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  artist: { type: Type.STRING },
+                  mood: { type: Type.STRING },
+                  duration: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{"songs": []}');
+    
+    // Resolve songs to playable versions
+    const resolved: Song[] = [];
+    for (const song of result.songs?.slice(0, count) || []) {
+      try {
+        const query = `${song.artist} - ${song.title}`;
+        const searchResults = await searchUnified('YOUTUBE', query);
+        if (searchResults.length > 0) {
+          resolved.push({ ...searchResults[0], mood: song.mood });
+        }
+      } catch (e) {
+        // Skip on error
+      }
+    }
+    
+    console.log(`[Radio] Generated ${resolved.length} songs for ${seed.type}: ${seed.value}`);
+    return resolved;
+  } catch (e) {
+    console.error('[Radio] Generation failed:', e);
+    return [];
+  }
+};
+
+/**
+ * Phase 4: Similar Artists Discovery
+ * Returns related artists for graph visualization
+ */
+export interface RelatedArtist {
+  name: string;
+  similarity: number; // 0-100
+  genres: string[];
+  reason: string;
+}
+
+export const getRelatedArtists = async (artistName: string, count: number = 8): Promise<RelatedArtist[]> => {
+  if (!apiKey) return [];
+  const model = "gemini-2.5-flash";
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: `Find ${count} artists similar to "${artistName}".
+      
+      For each artist provide:
+      - name: Artist name
+      - similarity: 0-100 score (100 = very similar)
+      - genres: 1-3 genre tags
+      - reason: One sentence explaining the connection
+      
+      Include a mix of obvious connections and interesting discoveries.
+      Return as JSON array.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            artists: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  similarity: { type: Type.NUMBER },
+                  genres: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  reason: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{"artists": []}');
+    return result.artists?.slice(0, count) || [];
+  } catch (e) {
+    console.error('[Artists] Discovery failed:', e);
+    return [];
   }
 };
 

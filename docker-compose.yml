@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Frontend - React app served by Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        - VITE_API_URL=http://localhost:3001
+        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
+        - VITE_YOUTUBE_API_KEY=${VITE_YOUTUBE_API_KEY}
+    container_name: music-companion-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - music-companion-network
+    restart: unless-stopped
+
+  # Backend - Express API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: music-companion-backend
+    ports:
+      - "3001:3001"
+    depends_on:
+      - redis
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:5173
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # Spotify
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=http://127.0.0.1:3001/auth/spotify/callback
+      # Discord
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - DISCORD_REDIRECT_URI=http://127.0.0.1:3001/auth/discord/callback
+      # Google/YouTube
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      # Last.fm
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
+      # AI
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Email
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
+      # Optional
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      - backend-data:/app/data
+    networks:
+      - music-companion-network
+    restart: unless-stopped
+
+  # Redis - Cache layer
+  redis:
+    image: redis:7-alpine
+    container_name: music-companion-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - music-companion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  music-companion-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+  redis-data:

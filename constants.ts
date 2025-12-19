@@ -56,6 +56,7 @@ import {
   Activity,
   Rocket,
   Eye,
+  EyeOff,
   BookOpen,
   CheckCircle,
   Key,
@@ -64,7 +65,22 @@ import {
   Moon,
   Disc,
   Waves,
-  Smile
+  Smile,
+  History,
+  Link,
+  Server,
+  Keyboard,
+  Shuffle,
+  Repeat,
+  Repeat1,
+  Timer,
+  TimerOff,
+  VolumeX,
+  Volume1,
+  FastForward,
+  Rewind,
+  ChevronDown,
+  ChevronLeft
 } from 'lucide-react';
 
 export const ICONS = {
@@ -127,6 +143,7 @@ export const ICONS = {
   Activity,
   Rocket,
   Eye,
+  EyeOff,
   BookOpen,
   CheckCircle,
   Key,
@@ -135,7 +152,22 @@ export const ICONS = {
   Moon,
   Disc,
   Waves,
-  Smile
+  Smile,
+  History,
+  Link,
+  Server,
+  Keyboard,
+  Shuffle,
+  Repeat,
+  Repeat1,
+  Timer,
+  TimerOff,
+  VolumeX,
+  Volume1,
+  FastForward,
+  Rewind,
+  ChevronDown,
+  ChevronLeft
 };
 
 export const MOCK_SONGS: any[] = [

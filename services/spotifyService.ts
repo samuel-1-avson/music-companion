@@ -163,3 +163,219 @@ export const remoteControl = {
       } catch (e) { return null; }
   }
 };
+
+// --- ENHANCED SPOTIFY FEATURES ---
+
+/**
+ * Get user's recently played tracks
+ */
+export const getRecentlyPlayed = async (token: string, limit: number = 20): Promise<Song[]> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/player/recently-played?limit=${limit}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    return (data.items || []).map((item: any) => mapSpotifyTrackToSong(item.track));
+  } catch (e) {
+    console.error("Get recently played error:", e);
+    return [];
+  }
+};
+
+/**
+ * Get user's top tracks
+ */
+export const getTopTracks = async (
+  token: string, 
+  timeRange: 'short_term' | 'medium_term' | 'long_term' = 'medium_term',
+  limit: number = 20
+): Promise<Song[]> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=${limit}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    return (data.items || []).map(mapSpotifyTrackToSong);
+  } catch (e) {
+    console.error("Get top tracks error:", e);
+    return [];
+  }
+};
+
+/**
+ * Create a new playlist
+ */
+export const createPlaylist = async (
+  token: string,
+  userId: string,
+  name: string,
+  description: string = '',
+  isPublic: boolean = false
+): Promise<{ id: string; url: string } | null> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/users/${userId}/playlists`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name,
+          description,
+          public: isPublic
+        })
+      }
+    );
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    return {
+      id: data.id,
+      url: data.external_urls?.spotify || ''
+    };
+  } catch (e) {
+    console.error("Create playlist error:", e);
+    return null;
+  }
+};
+
+/**
+ * Add tracks to a playlist
+ */
+export const addTracksToPlaylist = async (
+  token: string,
+  playlistId: string,
+  trackUris: string[]
+): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ uris: trackUris })
+      }
+    );
+    
+    return response.ok;
+  } catch (e) {
+    console.error("Add tracks to playlist error:", e);
+    return false;
+  }
+};
+
+/**
+ * Save a track to user's library (Liked Songs)
+ */
+export const addToLikedSongs = async (token: string, trackId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/tracks`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids: [trackId] })
+      }
+    );
+    
+    return response.ok;
+  } catch (e) {
+    console.error("Add to liked songs error:", e);
+    return false;
+  }
+};
+
+/**
+ * Remove a track from user's library
+ */
+export const removeFromLikedSongs = async (token: string, trackId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/tracks`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids: [trackId] })
+      }
+    );
+    
+    return response.ok;
+  } catch (e) {
+    console.error("Remove from liked songs error:", e);
+    return false;
+  }
+};
+
+/**
+ * Check if tracks are saved in user's library
+ */
+export const checkLikedSongs = async (token: string, trackIds: string[]): Promise<boolean[]> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/tracks/contains?ids=${trackIds.join(',')}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    if (!response.ok) return trackIds.map(() => false);
+    
+    return await response.json();
+  } catch (e) {
+    console.error("Check liked songs error:", e);
+    return trackIds.map(() => false);
+  }
+};
+
+/**
+ * Get audio features (tempo, energy, etc.) for a track
+ */
+export const getAudioFeatures = async (
+  token: string, 
+  trackId: string
+): Promise<{
+  tempo: number;
+  energy: number;
+  danceability: number;
+  valence: number; // happiness
+  acousticness: number;
+} | null> => {
+  try {
+    const response = await fetch(
+      `https://api.spotify.com/v1/audio-features/${trackId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    return {
+      tempo: data.tempo,
+      energy: data.energy,
+      danceability: data.danceability,
+      valence: data.valence,
+      acousticness: data.acousticness
+    };
+  } catch (e) {
+    console.error("Get audio features error:", e);
+    return null;
+  }
+};

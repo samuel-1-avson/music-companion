@@ -1,0 +1,72 @@
+{
+  "name": "music-companion-vscode",
+  "displayName": "Music Companion",
+  "description": "Integrates with Music Companion to suggest music based on your coding activity",
+  "version": "1.0.0",
+  "publisher": "music-companion",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "musicCompanion.sendContext",
+        "title": "Music Companion: Send Current Context"
+      },
+      {
+        "command": "musicCompanion.toggleAutoSync",
+        "title": "Music Companion: Toggle Auto-Sync"
+      },
+      {
+        "command": "musicCompanion.openApp",
+        "title": "Music Companion: Open App"
+      }
+    ],
+    "configuration": {
+      "title": "Music Companion",
+      "properties": {
+        "musicCompanion.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Music Companion integration"
+        },
+        "musicCompanion.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3001",
+          "description": "Music Companion backend server URL"
+        },
+        "musicCompanion.autoSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically send context updates"
+        },
+        "musicCompanion.syncInterval": {
+          "type": "number",
+          "default": 30,
+          "description": "Seconds between auto-sync updates"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

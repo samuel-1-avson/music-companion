@@ -122,11 +122,81 @@ const searchDeezerInternal = async (query: string): Promise<MusicResult[]> => {
 
 // --- PUBLIC API ---
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
+// Extract video ID from backend ID (strips 'yt-' prefix if present)
+const extractVideoId = (id: string): string => {
+  if (id.startsWith('yt-')) {
+    return id.substring(3);
+  }
+  return id;
+};
+
+// Search via backend (uses YouTube API if configured)
+const searchViaBackend = async (query: string): Promise<MusicResult[]> => {
+  const url = `${BACKEND_URL}/api/music/search?q=${encodeURIComponent(query)}&provider=YOUTUBE&limit=12`;
+  console.log('[searchViaBackend] Fetching:', url);
+  
+  try {
+    const res = await fetch(url);
+    console.log('[searchViaBackend] Response status:', res.status, res.ok);
+    
+    if (!res.ok) {
+      console.error('[searchViaBackend] Response not OK:', res.status);
+      throw new Error('Backend search failed');
+    }
+    
+    const data = await res.json();
+    console.log('[searchViaBackend] Data received:', data.success, 'count:', data.data?.length);
+    
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      const results = data.data.map((item: any) => {
+        const videoId = extractVideoId(item.id);
+        console.log('[searchViaBackend] Mapping item:', item.id, '->', videoId);
+        return {
+          id: videoId,
+          title: item.title,
+          artist: item.artist,
+          album: item.album || 'YouTube',
+          artworkUrl: item.coverUrl || `https://img.youtube.com/vi/${videoId}/0.jpg`,
+          duration: parseDuration(item.duration),
+          source: 'YOUTUBE' as const,
+          videoId: videoId
+        };
+      });
+      console.log('[searchViaBackend] Returning', results.length, 'YouTube results');
+      return results;
+    }
+    console.log('[searchViaBackend] No data in response');
+    return [];
+  } catch (e) {
+    console.error('[searchViaBackend] Error:', e);
+    return [];
+  }
+};
+
+// Parse duration string like "3:45" to seconds
+const parseDuration = (dur: string): number => {
+  if (!dur || typeof dur !== 'string') return 0;
+  const parts = dur.split(':').map(Number);
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  } else if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return 0;
+};
+
 export const searchMusic = async (query: string): Promise<MusicResult[]> => {
-  // Fallback chain for "Network Search" (Download logic)
+  // 1. Try backend YouTube API (most reliable if API key configured)
+  const backend = await searchViaBackend(query);
+  if (backend.length > 0) return backend;
+  
+  // 2. Fallback to Invidious
   const yt = await searchYouTubeInternal(query);
   if (yt.length > 0) return yt;
   
+  // 3. Fallback to iTunes (no downloadable for yt-dlp)
   const apple = await searchAppleInternal(query);
   if (apple.length > 0) return apple;
 

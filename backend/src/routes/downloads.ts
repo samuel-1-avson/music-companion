@@ -1,0 +1,273 @@
+/**
+ * Download API Routes
+ * Endpoints for downloading and managing audio files
+ * Updated for async Supabase database
+ */
+import { Router } from 'express';
+import path from 'path';
+import fs from 'fs';
+import * as downloadService from '../services/download.js';
+
+const router = Router();
+
+/**
+ * Start a new download
+ * POST /api/downloads
+ */
+router.post('/', async (req, res) => {
+  const { videoId, title, artist, duration, coverUrl } = req.body;
+  
+  if (!videoId || !title) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Missing required fields: videoId, title' 
+    });
+  }
+  
+  // Validate videoId format
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid YouTube video ID' 
+    });
+  }
+  
+  try {
+    console.log(`[Download Route] Starting download for: ${videoId}`);
+    const result = await downloadService.startDownload(videoId, {
+      title,
+      artist,
+      duration,
+      coverUrl
+    });
+    
+    console.log(`[Download Route] Success:`, result);
+    res.json({
+      success: true,
+      data: {
+        id: result.id,
+        cached: result.cached,
+        message: result.cached ? 'Song already downloaded' : 'Download started'
+      }
+    });
+  } catch (error: any) {
+    console.error(`[Download Route] ERROR:`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to start download' 
+    });
+  }
+});
+
+/**
+ * Get all downloads
+ * GET /api/downloads
+ */
+router.get('/', async (req, res) => {
+  try {
+    const downloads = await downloadService.getAllDownloads();
+    const stats = await downloadService.getStorageStats();
+    
+    res.json({
+      success: true,
+      data: {
+        downloads,
+        stats: {
+          totalFiles: stats.totalFiles,
+          totalSize: stats.totalSize,
+          totalSizeMB: (stats.totalSize / 1024 / 1024).toFixed(2),
+          totalDownloads: stats.totalDownloads
+        }
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Get completed downloads only
+ * GET /api/downloads/completed
+ */
+router.get('/completed', async (req, res) => {
+  try {
+    const downloads = await downloadService.getCompletedDownloads();
+    res.json({ success: true, data: downloads });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Check if a video is already downloaded
+ * GET /api/downloads/check/:videoId
+ */
+router.get('/check/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+  
+  try {
+    const existing = await downloadService.isDownloaded(videoId);
+    res.json({
+      success: true,
+      data: {
+        downloaded: !!existing,
+        download: existing
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Get download status
+ * GET /api/downloads/:id
+ */
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const download = await downloadService.getDownloadStatus(id);
+    if (!download) {
+      return res.status(404).json({ success: false, error: 'Download not found' });
+    }
+    res.json({ success: true, data: download });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Stream/download audio file
+ * GET /api/downloads/:id/stream
+ */
+router.get('/:id/stream', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const filePath = await downloadService.getFilePath(id);
+    if (!filePath) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    
+    // Detect content type based on file extension
+    const ext = path.extname(filePath).toLowerCase();
+    let contentType = 'audio/mpeg'; // default
+    if (ext === '.m4a') contentType = 'audio/mp4';
+    else if (ext === '.webm') contentType = 'audio/webm';
+    else if (ext === '.ogg') contentType = 'audio/ogg';
+    else if (ext === '.wav') contentType = 'audio/wav';
+    
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    
+    if (range) {
+      // Handle range requests for seeking
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+      
+      const stream = fs.createReadStream(filePath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType
+      });
+      stream.pipe(res);
+    } else {
+      // Full file
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Download file (force download)
+ * GET /api/downloads/:id/file
+ */
+router.get('/:id/file', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const download = await downloadService.getDownloadStatus(id);
+    const filePath = await downloadService.getFilePath(id);
+    
+    if (!download || !filePath) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    
+    // Sanitize filename
+    const filename = `${download.title.replace(/[^a-z0-9]/gi, '_')}.mp3`;
+    
+    res.download(filePath, filename);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Cancel a download
+ * POST /api/downloads/:id/cancel
+ */
+router.post('/:id/cancel', (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const cancelled = downloadService.cancelDownload(id);
+    res.json({ 
+      success: true, 
+      data: { cancelled } 
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Delete a download
+ * DELETE /api/downloads/:id
+ */
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const deleted = await downloadService.deleteDownload(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Download not found' });
+    }
+    res.json({ success: true, data: { deleted: true } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Get storage stats
+ * GET /api/downloads/stats
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const stats = await downloadService.getStorageStats();
+    res.json({
+      success: true,
+      data: {
+        ...stats,
+        totalSizeMB: (stats.totalSize / 1024 / 1024).toFixed(2)
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;

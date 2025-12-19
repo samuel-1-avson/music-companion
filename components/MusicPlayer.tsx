@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ICONS } from '../constants';
 import { Song, MusicProvider } from '../types';
-import { getSongLyrics, analyzeSongMeaning } from '../services/geminiService';
+import { getSongLyrics, analyzeSongMeaning, analyzeLyricsSentiment, LyricsSentiment } from '../services/geminiService';
 import { saveSong } from '../utils/db';
 import { downloadAudioAsBlob } from '../services/musicService';
 import { remoteControl } from '../services/spotifyService'; // Import Remote Logic
@@ -29,6 +29,10 @@ interface MusicPlayerProps {
   musicProvider?: MusicProvider;
   favorites?: Song[]; // Added
   onToggleFavorite?: (song: Song) => void; // Added
+  // Phase 3: Smart DJ
+  smartDJEnabled?: boolean;
+  isSmartDJLoading?: boolean;
+  onToggleSmartDJ?: () => void;
 }
 
 interface LyricLine {
@@ -55,7 +59,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   spotifyToken,
   musicProvider,
   favorites = [],
-  onToggleFavorite
+  onToggleFavorite,
+  smartDJEnabled = false,
+  isSmartDJLoading = false,
+  onToggleSmartDJ
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -65,7 +72,9 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
   // Mode Detection
   const isSpotifyMode = musicProvider === 'SPOTIFY' && !!spotifyToken;
-  const isLocalMode = currentSong?.isOffline || (musicProvider !== 'SPOTIFY' && currentSong?.previewUrl);
+  // isServerStream: server-downloaded song with stream URL
+  const isServerStream = currentSong?.externalUrl?.includes('/stream') || currentSong?.id?.startsWith('server-');
+  const isLocalMode = currentSong?.isOffline || (musicProvider !== 'SPOTIFY' && currentSong?.previewUrl) || isServerStream;
   const isExternalMode = !isSpotifyMode && !isLocalMode; // YouTube link etc
 
   // Status State
@@ -78,6 +87,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
   const [loadingLyrics, setLoadingLyrics] = useState(false);
   const lyricsListRef = useRef<HTMLDivElement>(null);
+  
+  // Phase 4: Lyrics Sentiment
+  const [sentiment, setSentiment] = useState<LyricsSentiment | null>(null);
+  const [loadingSentiment, setLoadingSentiment] = useState(false);
   
   // Queue & Visualizer
   const [showQueue, setShowQueue] = useState(false);
@@ -204,10 +217,18 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   // --- LYRICS & UTILS (Kept simplified for brevity, same as before) ---
   const fetchLyrics = async (song: Song) => {
     setLoadingLyrics(true);
+    setSentiment(null);
     try {
       const text = await getSongLyrics(song.artist, song.title);
       setLyrics(text);
-      // Parse lyrics logic...
+      
+      // Phase 4: Analyze sentiment
+      if (text && text.length > 50) {
+        setLoadingSentiment(true);
+        const sentimentResult = await analyzeLyricsSentiment(text, song.title, song.artist);
+        setSentiment(sentimentResult);
+        setLoadingSentiment(false);
+      }
     } catch (e) {
       setLyrics("Error loading lyrics.");
     } finally {
@@ -252,21 +273,56 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
              </h3>
              <button onClick={() => setShowLyrics(false)}><ICONS.Close size={16}/></button>
            </div>
+           
+           {/* Phase 4: Sentiment Tags */}
+           {sentiment && (
+             <div className="p-3 border-b border-theme bg-[var(--bg-main)] flex flex-wrap gap-1">
+               <span className={`px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded-full ${
+                 sentiment.energy === 'high' ? 'bg-red-500 text-white' :
+                 sentiment.energy === 'low' ? 'bg-blue-500 text-white' : 'bg-yellow-500 text-black'
+               }`}>
+                 {sentiment.mood}
+               </span>
+               {sentiment.emotions.slice(0, 3).map((emotion, i) => (
+                 <span key={i} className="px-2 py-0.5 text-[10px] font-mono bg-[var(--bg-hover)] border border-theme rounded-full">
+                   {emotion}
+                 </span>
+               ))}
+               {sentiment.themes.slice(0, 2).map((theme, i) => (
+                 <span key={i} className="px-2 py-0.5 text-[10px] font-mono text-[var(--text-muted)] italic">
+                   #{theme}
+                 </span>
+               ))}
+             </div>
+           )}
+           {loadingSentiment && (
+             <div className="p-2 flex items-center gap-2 text-[10px] font-mono text-[var(--text-muted)] border-b border-theme">
+               <ICONS.Loader size={12} className="animate-spin" /> Analyzing mood...
+             </div>
+           )}
+           
            <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" ref={lyricsListRef}>
               {loadingLyrics ? <ICONS.Loader className="animate-spin"/> : (
                  <div className="whitespace-pre-wrap">{lyrics}</div>
               )}
            </div>
+           
+           {/* Sentiment Summary */}
+           {sentiment?.summary && (
+             <div className="p-3 border-t border-theme bg-[var(--bg-hover)] text-[10px] font-mono text-[var(--text-muted)]">
+               💭 {sentiment.summary}
+             </div>
+           )}
         </div>
       )}
 
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t-2 border-theme p-0 z-50 shadow-[0_-4px_0_0_rgba(0,0,0,0.05)]">
         
-        {/* Local Audio Element (Hidden if not needed) */}
-        {isLocalMode && currentSong.previewUrl && (
+        {/* Local Audio Element (for preview URLs, file blobs, or server streams) */}
+        {isLocalMode && (currentSong.previewUrl || currentSong.externalUrl?.includes('/stream')) && (
           <audio 
             ref={audioRef}
-            src={currentSong.previewUrl}
+            src={currentSong.previewUrl || currentSong.externalUrl}
             onTimeUpdate={handleTimeUpdate}
             onEnded={() => hasNext && handleNextTrack()}
             crossOrigin="anonymous" 
@@ -340,6 +396,20 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
           {/* Tools */}
           <div className="flex items-center justify-end space-x-4 w-1/3">
+             {/* Smart DJ Toggle */}
+             {onToggleSmartDJ && (
+               <button 
+                 onClick={onToggleSmartDJ} 
+                 className={`flex items-center gap-1 text-[10px] font-mono font-bold border border-theme px-2 py-1 transition-all ${smartDJEnabled ? 'bg-[var(--primary)] text-black' : 'bg-[var(--bg-card)] text-[var(--text-muted)]'}`}
+               >
+                 {isSmartDJLoading ? (
+                   <ICONS.Loader size={12} className="animate-spin" />
+                 ) : (
+                   <ICONS.Cpu size={12} />
+                 )}
+                 {smartDJEnabled ? 'DJ ON' : 'DJ'}
+               </button>
+             )}
              <button onClick={toggleRadioMode} className={`flex items-center gap-1 text-[10px] font-mono font-bold border border-theme px-2 py-1 transition-all ${isRadioMode ? 'bg-black text-white' : 'bg-[var(--bg-card)] text-[var(--text-muted)]'}`}>
                 <ICONS.Mic size={12} /> {isRadioMode ? 'ON AIR' : 'RADIO'}
              </button>

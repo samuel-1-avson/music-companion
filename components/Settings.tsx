@@ -2,21 +2,31 @@
 import React from 'react';
 import { ICONS } from '../constants';
 import { Theme } from '../types';
+import { useTranslation, Language, languageNames } from '../i18n';
 
 interface SettingsProps {
   currentTheme: Theme;
   onSetTheme: (t: Theme) => void;
   isSmartTheme: boolean;
   onToggleSmartTheme: () => void;
+  crossfadeDuration: number;
+  onSetCrossfadeDuration: (d: number) => void;
 }
+
 
 const Settings: React.FC<SettingsProps> = ({ 
     currentTheme, 
     onSetTheme,
     isSmartTheme,
-    onToggleSmartTheme
+    onToggleSmartTheme,
+    crossfadeDuration,
+    onSetCrossfadeDuration
 }) => {
+
+  // i18n
+  const { language, setLanguage, t } = useTranslation();
   
+
   const themes: { id: Theme; label: string; bg: string; color: string; tags: string[] }[] = [
       { id: 'minimal', label: 'Minimal', bg: '#ffffff', color: '#18181b', tags: ['Focus', 'Clean'] },
       { id: 'classic', label: 'Classic', bg: '#fcfbf9', color: '#fb923c', tags: ['Retro', 'Light'] },
@@ -133,8 +143,83 @@ const Settings: React.FC<SettingsProps> = ({
           </div>
       </div>
 
+      {/* Crossfade Section */}
+      <div>
+          <div className="flex items-center gap-2 mb-6">
+              <ICONS.Music className="text-[var(--primary)]" size={20} />
+              <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">Crossfade</h3>
+          </div>
+          
+          <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                  <div className="flex-1">
+                      <p className="text-sm font-mono text-[var(--text-muted)] mb-4">
+                          Smoothly blend between songs for seamless transitions. Set to 0 for instant transitions.
+                      </p>
+                      <div className="flex items-center gap-4">
+                          <span className="text-xs font-mono text-[var(--text-muted)] w-8">0s</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="12"
+                            step="1"
+                            value={crossfadeDuration}
+                            onChange={(e) => onSetCrossfadeDuration(Number(e.target.value))}
+                            className="flex-1 h-2 bg-[var(--bg-hover)] rounded-full appearance-none cursor-pointer accent-[var(--primary)]"
+                          />
+                          <span className="text-xs font-mono text-[var(--text-muted)] w-8">12s</span>
+                      </div>
+                  </div>
+                  <div className="flex flex-col items-center justify-center min-w-[100px]">
+                      <div className="text-4xl font-bold font-mono text-[var(--primary)]">
+                          {crossfadeDuration}s
+                      </div>
+                      <span className="text-xs font-mono text-[var(--text-muted)] uppercase">Duration</span>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      {/* Language Section */}
+      <div>
+          <div className="flex items-center gap-2 mb-6">
+              <ICONS.Globe className="text-[var(--primary)]" size={20} />
+              <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">{t.language}</h3>
+          </div>
+          
+          <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                  <div className="flex-1">
+                      <p className="text-sm font-mono text-[var(--text-muted)] mb-4">
+                          Select your preferred language for the interface.
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                          {(Object.keys(languageNames) as Language[]).map((lang) => (
+                              <button
+                                key={lang}
+                                onClick={() => setLanguage(lang)}
+                                className={`p-3 border-2 transition-all text-center ${
+                                  language === lang 
+                                    ? 'border-[var(--primary)] bg-[var(--primary)] text-black' 
+                                    : 'border-theme hover:border-[var(--primary)] bg-[var(--bg-hover)]'
+                                }`}
+                              >
+                                <span className="text-lg block mb-1">
+                                  {lang === 'en' ? '🇺🇸' : lang === 'es' ? '🇪🇸' : lang === 'fr' ? '🇫🇷' : lang === 'de' ? '🇩🇪' : '🇯🇵'}
+                                </span>
+                                <span className="text-xs font-mono font-bold uppercase">{languageNames[lang]}</span>
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+
       {/* System Section */}
       <div>
+
+
          <div className="flex items-center gap-2 mb-6">
               <ICONS.HardDrive className="text-[var(--primary)]" size={20} />
               <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">System Data</h3>

@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ICONS } from '../constants';
 import { Song } from '../types';
-import { HistoryItem, getHistoryDB, saveSettingDB, getSettingDB } from '../utils/db';
+import { HistoryItem, getHistoryDB, saveSettingDB, getSettingDB, getListeningStatsDB, ListeningStats, getListeningStreakDB, StreakData } from '../utils/db';
+
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
@@ -25,12 +26,17 @@ const UserProfile: React.FC<UserProfileProps> = ({
   onToggleFavorite,
   onUpdateProfile 
 }) => {
-  const [activeTab, setActiveTab] = useState<'DNA' | 'FAVORITES' | 'HISTORY'>('DNA');
+  const [activeTab, setActiveTab] = useState<'DNA' | 'FAVORITES' | 'HISTORY' | 'STATS'>('DNA');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(userName);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Phase 2: Detailed Stats
+  const [detailedStats, setDetailedStats] = useState<ListeningStats | null>(null);
+  const [streak, setStreak] = useState<StreakData | null>(null);
+
 
   useEffect(() => {
     const loadData = async () => {
@@ -39,9 +45,22 @@ const UserProfile: React.FC<UserProfileProps> = ({
         
         const savedAvatar = await getSettingDB('user_avatar');
         if (savedAvatar) setAvatar(savedAvatar);
+
+        // Phase 2: Load detailed stats with error handling
+        try {
+          const stats = await getListeningStatsDB();
+          setDetailedStats(stats);
+          
+          const streakData = await getListeningStreakDB();
+          setStreak(streakData);
+        } catch (err) {
+          console.error('Failed to load Phase 2 stats:', err);
+        }
     };
     loadData();
   }, []);
+
+
 
   // --- STATS ENGINE ---
 
@@ -75,7 +94,8 @@ const UserProfile: React.FC<UserProfileProps> = ({
   }, [history]);
 
   const activityData = useMemo(() => {
-      const hours = Array(24).fill(0);
+      const hours: number[] = Array.from({ length: 24 }, () => 0);
+
       history.forEach(h => {
           const hour = new Date(h.playedAt).getHours();
           hours[hour]++;
@@ -215,7 +235,8 @@ const UserProfile: React.FC<UserProfileProps> = ({
 
             {/* NAVIGATION TABS */}
             <div className="flex justify-center md:justify-start border-b border-[var(--border)]">
-                {['DNA', 'FAVORITES', 'HISTORY'].map(tab => (
+                {['DNA', 'STATS', 'FAVORITES', 'HISTORY'].map(tab => (
+
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab as any)}
@@ -294,7 +315,8 @@ const UserProfile: React.FC<UserProfileProps> = ({
                                 </ResponsiveContainer>
                             </div>
                             <p className="text-center text-xs text-[var(--text-muted)] font-mono mt-4">
-                                Peak activity detected around {activityData.sort((a,b) => b.count - a.count)[0]?.hour}:00.
+                                Peak activity detected around {[...activityData].sort((a,b) => b.count - a.count)[0]?.hour}:00.
+
                             </p>
                         </div>
                     </div>
@@ -363,7 +385,116 @@ const UserProfile: React.FC<UserProfileProps> = ({
                     </div>
                 )}
 
+                {activeTab === 'STATS' && detailedStats && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        
+                        {/* Streak Card */}
+                        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl p-6">
+                            <h3 className="text-sm font-bold uppercase tracking-widest mb-6 text-[var(--text-muted)] flex items-center gap-2">
+                                🔥 Listening Streak
+                            </h3>
+                            <div className="flex items-center gap-8">
+                                <div className="text-center">
+                                    <div className="text-5xl font-bold font-mono">{streak?.currentStreak || 0}</div>
+                                    <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide mt-1">Current</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-3xl font-bold font-mono text-[var(--primary)]">{streak?.longestStreak || 0}</div>
+                                    <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide mt-1">Best</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-3xl font-bold font-mono">{Math.floor((streak?.totalListeningMinutes || 0) / 60)}</div>
+                                    <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide mt-1">Hours</div>
+                                </div>
+                            </div>
+                            {streak && !streak.listenedToday && streak.currentStreak > 0 && (
+                                <div className="mt-4 px-4 py-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-orange-600 text-sm">
+                                    🎵 Play a song today to keep your streak alive!
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Top Artists */}
+                        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl p-6">
+                            <h3 className="text-sm font-bold uppercase tracking-widest mb-6 text-[var(--text-muted)] flex items-center gap-2">
+                                <ICONS.User size={16} /> Top Artists
+                            </h3>
+
+                            <div className="space-y-3">
+                                {detailedStats.topArtists.slice(0, 5).map((artist, i) => (
+                                    <div key={artist.name} className="flex items-center gap-3">
+                                        <span className="w-6 h-6 rounded-full bg-[var(--primary)] text-[var(--bg-main)] flex items-center justify-center text-xs font-bold">
+                                            {i + 1}
+                                        </span>
+                                        <span className="flex-1 truncate font-medium">{artist.name}</span>
+                                        <span className="text-xs text-[var(--text-muted)] font-mono">{artist.count} plays</span>
+                                    </div>
+                                ))}
+                                {detailedStats.topArtists.length === 0 && (
+                                    <p className="text-sm text-[var(--text-muted)]">No data yet. Start listening!</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Top Moods */}
+                        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl p-6">
+                            <h3 className="text-sm font-bold uppercase tracking-widest mb-6 text-[var(--text-muted)] flex items-center gap-2">
+                                <ICONS.Smile size={16} /> Top Moods
+                            </h3>
+                            <div className="space-y-3">
+                                {detailedStats.topMoods.map(mood => (
+                                    <div key={mood.name} className="flex items-center gap-3">
+                                        <div className="flex-1">
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-sm font-medium">{mood.name}</span>
+                                                <span className="text-xs text-[var(--text-muted)]">{mood.count}</span>
+                                            </div>
+                                            <div className="h-2 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-[var(--primary)] rounded-full"
+                                                    style={{ width: `${detailedStats.totalSongs > 0 ? (mood.count / detailedStats.totalSongs) * 100 : 0}%` }}
+                                                />
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Weekly Activity */}
+                        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl p-6">
+                            <h3 className="text-sm font-bold uppercase tracking-widest mb-6 text-[var(--text-muted)] flex items-center gap-2">
+                                <ICONS.Chart size={16} /> This Week
+                            </h3>
+                            <div className="h-[200px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={detailedStats.recentDays}>
+                                        <XAxis 
+                                            dataKey="date" 
+                                            tickFormatter={(val) => new Date(val).toLocaleDateString('en', { weekday: 'short' })}
+                                            tick={{ fontSize: 10, fill: 'var(--text-muted)' }} 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                        />
+                                        <Tooltip 
+                                            cursor={{fill: 'var(--bg-hover)'}}
+                                            contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                                        />
+                                        <Bar dataKey="count" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <p className="text-center text-xs text-[var(--text-muted)] font-mono mt-4">
+                                {detailedStats.totalSongs} songs • {detailedStats.totalMinutes} minutes this week
+                            </p>
+                        </div>
+
+                    </div>
+                )}
+
             </div>
+
         </div>
     </div>
   );

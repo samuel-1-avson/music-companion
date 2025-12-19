@@ -1,0 +1,30 @@
+# Backend image - build native modules from source
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install build tools for native modules
+RUN apk add --no-cache python3 make g++ sqlite
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies 
+# Use npm install (not ci) to allow building native modules
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Expose port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO- http://localhost:3001/health || exit 1
+
+# Run with tsx (TypeScript execution)
+CMD ["npx", "tsx", "src/index.ts"]

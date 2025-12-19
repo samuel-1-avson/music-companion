@@ -60,9 +60,63 @@ export type Theme =
   | 'oceanic'
   | 'terminal'
   | 'sakura'
-  | 'ember';
+  | 'ember'
+  | 'high-contrast';
 
-export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER';
+export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER' | 'LASTFM' | 'SOUNDCLOUD';
+
+// --- DEVELOPER API TYPES ---
+
+export type ApiScope = 'player:read' | 'player:control' | 'queue:manage' | 'ai:generate';
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key: string;
+  scopes: ApiScope[];
+  createdAt: number;
+  lastUsed?: number;
+}
+
+// --- WEBHOOK TYPES ---
+
+export type WebhookEvent = 
+  | 'SONG_CHANGED' 
+  | 'PLAYBACK_PAUSED' 
+  | 'PLAYBACK_RESUMED' 
+  | 'MOOD_CHANGED'
+  | 'FAVORITE_ADDED'
+  | 'PLAYLIST_GENERATED';
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  secret?: string;
+  enabled: boolean;
+  createdAt: number;
+  lastTriggered?: number;
+  failureCount: number;
+}
+
+// --- LAST.FM TYPES ---
+
+export interface LastFmSession {
+  name: string;
+  key: string;
+  subscriber: boolean;
+}
+
+// --- EXTENSION TYPES ---
+
+export type ExtensionType = 'browser' | 'vscode' | 'desktop';
+
+export interface ExtensionContext {
+  type: ExtensionType;
+  context: string;
+  metadata?: Record<string, any>;
+}
 
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
@@ -74,7 +128,8 @@ export enum AppView {
   FOCUS = 'FOCUS',
   ARCADE = 'ARCADE',
   OFFLINE = 'OFFLINE',
-  PROFILE = 'PROFILE'
+  PROFILE = 'PROFILE',
+  COLLAB = 'COLLAB'
 }
 
 export interface LiveSessionStatus {

@@ -1,6 +1,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ICONS } from '../constants';
+import MusicTrivia from './MusicTrivia';
+
+// --- GAME SELECTION ---
+type GameType = 'SELECT' | 'CYBER_DEFENSE' | 'MUSIC_TRIVIA';
 
 // --- GAME CONSTANTS ---
 const CANVAS_WIDTH = 800;
@@ -55,11 +59,15 @@ const Arcade: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Game Selection
+  const [selectedGame, setSelectedGame] = useState<GameType>('SELECT');
+
   // Game State
   const [gameState, setGameState] = useState<'MENU' | 'PLAYING' | 'GAMEOVER'>('MENU');
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [wave, setWave] = useState(1);
+
 
   // Mutable Game Data (Refs for performance)
   const player = useRef({ x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2, vx: 0, vy: 0, angle: -Math.PI/2, hp: 100, iframes: 0 });
@@ -451,12 +459,67 @@ const Arcade: React.FC = () => {
   };
 
   useEffect(() => {
+      if (selectedGame !== 'CYBER_DEFENSE') return; // Only run game loop for Cyber Defense
       frameId.current = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(frameId.current);
-  }, [gameState]);
+  }, [gameState, selectedGame]);
 
+  // Game Selection Screen
+  if (selectedGame === 'SELECT') {
+    return (
+      <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[80vh] font-mono select-none">
+        <h1 className="text-5xl font-black uppercase mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500">
+          🎮 ARCADE
+        </h1>
+        <p className="text-gray-500 text-sm mb-8">Choose your game</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+          {/* Cyber Defense */}
+          <button
+            onClick={() => setSelectedGame('CYBER_DEFENSE')}
+            className="group relative bg-gradient-to-br from-gray-900 to-gray-800 border-2 border-cyan-500 p-6 rounded-xl hover:scale-105 transition-all hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]"
+          >
+            <div className="absolute top-3 right-3 text-[10px] font-bold text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">ACTION</div>
+            <div className="text-6xl mb-4">🚀</div>
+            <h2 className="text-xl font-bold text-white mb-2 uppercase tracking-wider">Cyber Defense</h2>
+            <p className="text-xs text-gray-400">Vector shooter with waves of enemies. Use WASD + Space to play.</p>
+          </button>
+          
+          {/* Music Trivia */}
+          <button
+            onClick={() => setSelectedGame('MUSIC_TRIVIA')}
+            className="group relative bg-gradient-to-br from-purple-900 to-indigo-900 border-2 border-purple-500 p-6 rounded-xl hover:scale-105 transition-all hover:shadow-[0_0_30px_rgba(168,85,247,0.3)]"
+          >
+            <div className="absolute top-3 right-3 text-[10px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">TRIVIA</div>
+            <div className="text-6xl mb-4">🎵</div>
+            <h2 className="text-xl font-bold text-white mb-2 uppercase tracking-wider">Music Trivia</h2>
+            <p className="text-xs text-gray-400">Test your music knowledge! Earn XP with correct answers.</p>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Music Trivia Game
+  if (selectedGame === 'MUSIC_TRIVIA') {
+    return (
+      <div className="h-[calc(100vh-8rem)]">
+        <MusicTrivia onExit={() => setSelectedGame('SELECT')} />
+      </div>
+    );
+  }
+
+  // Cyber Defense Game (Original)
   return (
     <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[80vh] font-mono select-none" ref={containerRef}>
+       {/* Back Button */}
+       <button 
+         onClick={() => setSelectedGame('SELECT')}
+         className="absolute top-4 left-4 p-2 hover:bg-white/10 rounded flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+       >
+         <ICONS.ArrowUp size={16} className="rotate-[-90deg]" /> Back to Arcade
+       </button>
+       
        <div className="mb-6 text-center">
           <h2 className="text-4xl font-black font-mono uppercase mb-2 flex items-center justify-center gap-3 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
              <ICONS.Zap size={40} className="text-cyan-400" />

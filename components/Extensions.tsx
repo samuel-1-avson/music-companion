@@ -2,8 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { generatePlaylistFromContext } from '../services/geminiService';
-import { Song, MusicProvider, SpotifyProfile } from '../types';
-import { getSpotifyAuthUrl } from '../services/spotifyService';
+import { Song, MusicProvider, SpotifyProfile, ApiKey, ApiScope, Webhook, WebhookEvent } from '../types';
+import { getSpotifyAuthUrl, getRecentlyPlayed } from '../services/spotifyService';
+import * as lastfm from '../services/lastfmService';
+import * as devApi from '../services/developerApiService';
+import * as webhooks from '../services/webhookService';
+import * as extensionBridge from '../services/extensionBridge';
+
+// Phase 5 Components
+import ReleaseRadar from './ReleaseRadar';
+import ConcertFinder from './ConcertFinder';
+import ListeningReport from './ListeningReport';
+import SmartPlaylistEditor from './SmartPlaylistEditor';
+import IntegrationsPanel from './IntegrationsPanel';
 
 interface ExtensionsProps {
   onPlaySong: (song: Song, queue?: Song[]) => void;
@@ -29,11 +40,16 @@ const Extensions: React.FC<ExtensionsProps> = ({
     onSetMusicProvider,
     onDisconnectSpotify
 }) => {
-  const [activeTab, setActiveTab] = useState<'SOURCES' | 'APPS' | 'DEV'>('SOURCES');
+  const [activeTab, setActiveTab] = useState<'SOURCES' | 'DISCOVER' | 'APPS' | 'DEV'>('SOURCES');
+  const [showSmartPlaylist, setShowSmartPlaylist] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState<'week' | 'month' | 'year'>('week');
   
   // --- DEV / API STATE ---
-  const [apiKey, setApiKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState<ApiScope[]>(['player:read']);
+  const [showNewKeyModal, setShowNewKeyModal] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeSimulation, setActiveSimulation] = useState<string | null>(null);
 
@@ -41,18 +57,30 @@ const Extensions: React.FC<ExtensionsProps> = ({
   const [clientId, setClientId] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
   const [isEditingSpotify, setIsEditingSpotify] = useState(false);
+  const [recentlyPlayed, setRecentlyPlayed] = useState<Song[]>([]);
 
+  // --- LAST.FM STATE ---
+  const [lastfmApiKey, setLastfmApiKey] = useState('');
+  const [lastfmSecret, setLastfmSecret] = useState('');
+  const [lastfmSession, setLastfmSession] = useState<{ name: string; key: string } | null>(null);
+  const [isEditingLastfm, setIsEditingLastfm] = useState(false);
+
+  // --- WEBHOOK STATE ---
+  const [userWebhooks, setUserWebhooks] = useState<Webhook[]>([]);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [newWebhookName, setNewWebhookName] = useState('');
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [newWebhookEvents, setNewWebhookEvents] = useState<WebhookEvent[]>(['SONG_CHANGED']);
+  const [webhookTestResult, setWebhookTestResult] = useState<{ id: string; success: boolean } | null>(null);
+
+  // --- EXTENSION STATE ---
+  const [connectedExtensions, setConnectedExtensions] = useState<string[]>([]);
+
+  // Load initial state
   useEffect(() => {
-    // Generate a fake API key if none exists
-    const stored = localStorage.getItem('companion_api_key');
-    if (stored) {
-      setApiKey(stored);
-    } else {
-      const newKey = 'mc_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
-      localStorage.setItem('companion_api_key', newKey);
-      setApiKey(newKey);
-    }
-
+    // Load API keys
+    setApiKeys(devApi.loadApiKeys());
+    
     // Load Spotify Config
     const savedId = localStorage.getItem('spotify_client_id');
     if (savedId) setClientId(savedId);
@@ -61,16 +89,41 @@ const Extensions: React.FC<ExtensionsProps> = ({
     if (savedUri) {
         setRedirectUri(savedUri);
     } else {
-        let url = window.location.href.split('#')[0];
-        if (url.endsWith('/')) url = url.slice(0, -1);
-        setRedirectUri(url);
+        // Default to HTTPS with /auth/spotify/callback path
+        const baseUrl = window.location.origin;
+        setRedirectUri(`${baseUrl}/auth/spotify/callback`);
     }
+
+    // Load Last.fm config
+    const lfmKey = localStorage.getItem('lastfm_api_key');
+    if (lfmKey) setLastfmApiKey(lfmKey);
+    const lfmSession = lastfm.getSession();
+    if (lfmSession) setLastfmSession(lfmSession);
+
+    // Load webhooks
+    setUserWebhooks(webhooks.getWebhooks());
+
+    // Initialize extension bridge
+    extensionBridge.initializeExtensionBridge();
+    setConnectedExtensions(extensionBridge.getConnectedExtensions());
+
+    // Subscribe to API events for logging
+    return devApi.onApiEvent('apiKeyUsed', (event) => {
+      addLog('API', `${event.data.action}: ${event.data.name || event.data.keyId}`);
+    });
   }, []);
+
+  // Load Spotify recently played when token available
+  useEffect(() => {
+    if (spotifyToken) {
+      getRecentlyPlayed(spotifyToken, 10).then(setRecentlyPlayed);
+    }
+  }, [spotifyToken]);
 
   const addLog = (source: string, event: string) => {
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-    setLogs(prev => [{ id: Date.now(), source, event, time: timeStr }, ...prev.slice(0, 7)]);
+    setLogs(prev => [{ id: Date.now(), source, event, time: timeStr }, ...prev.slice(0, 19)]);
   };
 
   const simulateContext = async (source: string, eventName: string, promptContext: string) => {
@@ -85,6 +138,8 @@ const Extensions: React.FC<ExtensionsProps> = ({
       addLog('SYSTEM', `PROCESSED: Found ${songs.length} tracks via ${musicProvider}`);
       if (songs.length > 0) {
         onPlaySong(songs[0], songs);
+        // Dispatch webhook event
+        webhooks.dispatchEvent('SONG_CHANGED', songs[0]);
       }
     } catch (e) {
       addLog('SYSTEM', 'ERROR: Failed to generate context');
@@ -94,44 +149,120 @@ const Extensions: React.FC<ExtensionsProps> = ({
   };
 
   const handleSpotifyConnect = () => {
-      if (!clientId) return;
-      localStorage.setItem('spotify_client_id', clientId);
-      localStorage.setItem('spotify_redirect_uri', redirectUri);
-      const url = getSpotifyAuthUrl(clientId, redirectUri);
-      window.open(url, '_blank', 'width=600,height=800');
+      // Use backend OAuth flow - more secure, handles token exchange server-side
+      // Backend redirects to Spotify, then back to backend callback, then to frontend with token
+      const backendAuthUrl = 'http://localhost:3001/auth/spotify';
+      window.location.href = backendAuthUrl;
   };
 
-  const regenerateKey = () => {
-    const newKey = 'mc_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
-    localStorage.setItem('companion_api_key', newKey);
-    setApiKey(newKey);
-    addLog('SYSTEM', 'API_KEY_ROTATED');
+  // --- API KEY HANDLERS ---
+  const handleCreateApiKey = () => {
+    if (!newKeyName.trim()) return;
+    const key = devApi.createApiKey(newKeyName.trim(), newKeyScopes);
+    setApiKeys(devApi.loadApiKeys());
+    setNewKeyName('');
+    setNewKeyScopes(['player:read']);
+    setShowNewKeyModal(false);
+    addLog('SYSTEM', `API Key created: ${key.name}`);
+  };
+
+  const handleRevokeKey = (keyId: string) => {
+    devApi.revokeApiKey(keyId);
+    setApiKeys(devApi.loadApiKeys());
+    addLog('SYSTEM', `API Key revoked: ${keyId}`);
+  };
+
+  const handleCopyKey = (key: ApiKey) => {
+    navigator.clipboard.writeText(key.key);
+    setCopiedKeyId(key.id);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  };
+
+  // --- LAST.FM HANDLERS ---
+  const handleLastfmSave = () => {
+    lastfm.configureLastFm(lastfmApiKey, lastfmSecret);
+    setIsEditingLastfm(false);
+    addLog('LASTFM', 'API credentials saved');
+  };
+
+  const handleLastfmAuth = () => {
+    const callbackUrl = window.location.href.split('#')[0].split('?')[0];
+    const url = lastfm.getLastFmAuthUrl(callbackUrl);
+    if (url) {
+      // Use same-window redirect instead of popup to avoid browser security restrictions
+      window.location.href = url;
+    }
+  };
+
+  const handleLastfmLogout = () => {
+    lastfm.logout();
+    setLastfmSession(null);
+    addLog('LASTFM', 'Logged out');
+  };
+
+  // --- WEBHOOK HANDLERS ---
+  const handleCreateWebhook = () => {
+    if (!newWebhookName.trim() || !newWebhookUrl.trim()) return;
+    webhooks.createWebhook(newWebhookName, newWebhookUrl, newWebhookEvents);
+    setUserWebhooks(webhooks.getWebhooks());
+    setShowWebhookModal(false);
+    setNewWebhookName('');
+    setNewWebhookUrl('');
+    setNewWebhookEvents(['SONG_CHANGED']);
+    addLog('WEBHOOK', `Created: ${newWebhookName}`);
+  };
+
+  const handleTestWebhook = async (id: string) => {
+    const result = await webhooks.testWebhook(id);
+    setWebhookTestResult({ id, success: result.success });
+    setTimeout(() => setWebhookTestResult(null), 3000);
+    addLog('WEBHOOK', `Test ${result.success ? 'SUCCESS' : 'FAILED'}`);
+  };
+
+  const handleDeleteWebhook = (id: string) => {
+    webhooks.deleteWebhook(id);
+    setUserWebhooks(webhooks.getWebhooks());
+    addLog('WEBHOOK', 'Deleted webhook');
+  };
+
+  const handleToggleWebhook = (id: string) => {
+    webhooks.toggleWebhook(id);
+    setUserWebhooks(webhooks.getWebhooks());
   };
 
   const PROVIDERS = [
-      { id: 'YOUTUBE', label: 'YouTube Network', icon: ICONS.Play, desc: 'Global video database. No login required. Best for variety.' },
-      { id: 'SPOTIFY', label: 'Spotify Connect', icon: ICONS.Music, desc: 'Premium streaming & device control. Requires Auth.' },
-      { id: 'APPLE', label: 'Apple Music', icon: ICONS.Radio, desc: 'iTunes Store preview network. High quality snippets.' },
-      { id: 'DEEZER', label: 'Deezer Flow', icon: ICONS.Activity, desc: 'Dynamic flow recommendations and previews.' },
+      { id: 'YOUTUBE', label: 'YouTube Network', icon: ICONS.Play, desc: 'Global video database. No login required. Best for variety.', color: '#FF0000' },
+      { id: 'SPOTIFY', label: 'Spotify Connect', icon: ICONS.Music, desc: 'Premium streaming & device control. Requires Auth.', color: '#1DB954' },
+      { id: 'APPLE', label: 'Apple Music', icon: ICONS.Radio, desc: 'iTunes Store preview network. High quality snippets.', color: '#FA243C' },
+      { id: 'DEEZER', label: 'Deezer Flow', icon: ICONS.Activity, desc: 'Dynamic flow recommendations and previews.', color: '#FEAA2D' },
+  ];
+
+  const SCOPES: { value: ApiScope; label: string; desc: string }[] = [
+    { value: 'player:read', label: 'Read Player', desc: 'View current song, queue, mood' },
+    { value: 'player:control', label: 'Control Player', desc: 'Play, pause, skip, volume' },
+    { value: 'queue:manage', label: 'Manage Queue', desc: 'Add/remove from queue' },
+    { value: 'ai:generate', label: 'AI Generate', desc: 'Generate playlists with AI' },
   ];
 
   return (
-    <div className="p-8 space-y-8 pb-32 max-w-6xl mx-auto">
+    <div className="p-8 space-y-8 pb-32 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex justify-between items-end border-b-4 border-black pb-4">
         <div>
           <h2 className="text-4xl font-bold text-black mb-2 font-mono">INTEGRATIONS</h2>
-          <p className="text-gray-600 font-mono">SOURCES_&_EXTERNAL_LINKS</p>
+          <p className="text-gray-600 font-mono">CONNECT_&_EXTEND</p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 flex-wrap gap-1">
             {[
-                { id: 'SOURCES', icon: ICONS.HardDrive, label: 'MUSIC_SOURCES' },
-                { id: 'APPS', icon: ICONS.Cpu, label: 'EXTERNAL_APPS' },
-                { id: 'DEV', icon: ICONS.Terminal, label: 'DEVELOPER_API' }
+                { id: 'SOURCES', icon: ICONS.HardDrive, label: 'SOURCES' },
+                { id: 'DISCOVER', icon: ICONS.Zap, label: 'DISCOVER' },
+                { id: 'APPS', icon: ICONS.Cpu, label: 'APPS' },
+                { id: 'DEV', icon: ICONS.Terminal, label: 'DEV_API' }
             ].map(tab => (
                 <button 
                     key={tab.id} 
                     onClick={() => setActiveTab(tab.id as any)} 
-                    className={`px-4 py-2 font-bold font-mono text-xs flex items-center gap-2 border-2 border-black transition-all ${activeTab === tab.id ? 'bg-black text-white shadow-retro-sm' : 'bg-white text-black hover:bg-gray-100'}`}
+                    className={`px-3 py-2 font-bold font-mono text-xs flex items-center gap-2 border-2 border-black transition-all ${activeTab === tab.id ? 'bg-black text-white shadow-retro-sm' : 'bg-white text-black hover:bg-gray-100'}`}
                 >
                     <tab.icon size={14} />{tab.label}
                 </button>
@@ -159,7 +290,7 @@ const Extensions: React.FC<ExtensionsProps> = ({
                           >
                               <div className="flex justify-between items-start relative z-10">
                                   <div className="flex items-center gap-4">
-                                      <div className={`p-3 border-2 ${isActive ? 'border-white bg-gray-800' : 'border-gray-200 bg-gray-50 group-hover:border-black'}`}>
+                                      <div className={`p-3 border-2 ${isActive ? 'border-white bg-gray-800' : 'border-gray-200 bg-gray-50 group-hover:border-black'}`} style={{ backgroundColor: isActive ? p.color : undefined }}>
                                           <p.icon size={24} />
                                       </div>
                                       <div>
@@ -175,173 +306,341 @@ const Extensions: React.FC<ExtensionsProps> = ({
                           </div>
                       );
                   })}
+
+                  {/* Recently Played (Spotify only) */}
+                  {spotifyToken && recentlyPlayed.length > 0 && (
+                    <div className="mt-6 bg-gray-50 border-2 border-gray-200 p-4">
+                      <h4 className="font-bold font-mono text-xs uppercase mb-3 flex items-center gap-2">
+                        <ICONS.History size={14} /> Recently Played (Spotify)
+                      </h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {recentlyPlayed.slice(0, 5).map(song => (
+                          <div 
+                            key={song.id}
+                            onClick={() => onPlaySong(song)}
+                            className="flex items-center gap-3 p-2 hover:bg-white border border-transparent hover:border-gray-200 cursor-pointer transition-all"
+                          >
+                            <img src={song.coverUrl} alt="" className="w-10 h-10 object-cover" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{song.title}</p>
+                              <p className="text-xs text-gray-500 truncate">{song.artist}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
               </div>
 
-              {/* Spotify Configuration Panel */}
-              <div className="bg-green-50 border-2 border-green-600 p-6 shadow-retro relative">
-                  <div className="absolute top-0 right-0 bg-green-600 text-white px-3 py-1 text-xs font-bold font-mono uppercase">
-                      Spotify Connect
-                  </div>
-                  
-                  {spotifyToken ? (
-                      <div className="text-center py-8">
-                          <div className="w-20 h-20 mx-auto bg-green-200 rounded-full flex items-center justify-center border-4 border-green-600 mb-4 relative">
-                              {spotifyProfile?.images?.[0]?.url ? (
-                                  <img src={spotifyProfile.images[0].url} className="w-full h-full rounded-full object-cover" />
-                              ) : <ICONS.User size={32} className="text-green-800" />}
-                              <div className="absolute bottom-0 right-0 bg-green-600 p-1 rounded-full border-2 border-white">
-                                  <ICONS.Check size={12} className="text-white" />
-                              </div>
-                          </div>
-                          <h3 className="font-bold text-xl mb-1">{spotifyProfile?.display_name || 'Spotify User'}</h3>
-                          <p className="text-xs font-mono text-green-800 mb-6">{spotifyProfile?.email}</p>
-                          
-                          <button 
-                            onClick={onDisconnectSpotify}
-                            className="bg-white border-2 border-red-500 text-red-600 px-6 py-2 text-xs font-bold font-mono uppercase hover:bg-red-500 hover:text-white transition-colors"
-                          >
-                              Disconnect Session
-                          </button>
-                      </div>
-                  ) : (
-                      <div className="space-y-4">
-                          <div className="flex justify-between items-center mb-2">
-                              <h4 className="font-bold font-mono text-sm">CONFIGURATION</h4>
-                              <button onClick={() => setIsEditingSpotify(!isEditingSpotify)} className="text-[10px] underline text-gray-500 hover:text-black">
-                                  {isEditingSpotify ? 'Cancel' : 'Edit Config'}
-                              </button>
-                          </div>
-                          
-                          {isEditingSpotify || !clientId ? (
-                              <div className="space-y-3 bg-white p-4 border-2 border-green-200">
-                                  <div>
-                                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Redirect URI</label>
-                                      <code className="block w-full bg-gray-100 p-2 text-xs border border-gray-300 break-all">{redirectUri}</code>
-                                      <p className="text-[9px] text-gray-400 mt-1">Add this to your Spotify Dashboard.</p>
-                                  </div>
-                                  <div>
-                                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Client ID</label>
-                                      <input 
-                                        type="text" 
-                                        value={clientId} 
-                                        onChange={e => setClientId(e.target.value)}
-                                        placeholder="Paste Client ID..."
-                                        className="w-full border-2 border-gray-300 p-2 text-xs font-mono focus:border-green-600 outline-none"
-                                      />
-                                  </div>
-                              </div>
-                          ) : (
-                              <div className="flex items-center gap-2 text-xs font-mono text-green-800 bg-green-100 p-2">
-                                  <ICONS.Check size={14} /> Client ID Configured
-                              </div>
-                          )}
-
-                          <button 
-                            onClick={handleSpotifyConnect}
-                            disabled={!clientId}
-                            className={`w-full py-4 font-bold font-mono uppercase text-sm border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 ${!clientId ? 'bg-gray-200 text-gray-400' : 'bg-[#1DB954] text-black hover:bg-[#1ed760]'}`}
-                          >
-                              <ICONS.ExternalLink size={16} /> Authenticate
-                          </button>
-                          <p className="text-[10px] text-center text-green-800 opacity-60">Opens Spotify Login in a popup.</p>
-                      </div>
-                  )}
+              {/* Simplified Integrations Panel */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-bold font-mono uppercase mb-4 flex items-center gap-2">
+                  <ICONS.Link size={20} /> Connected Accounts
+                </h3>
+                <IntegrationsPanel
+                  onSpotifyConnect={handleSpotifyConnect}
+                  spotifyConnected={!!spotifyToken}
+                  spotifyProfile={spotifyProfile}
+                  onSpotifyDisconnect={onDisconnectSpotify}
+                />
               </div>
           </div>
       )}
 
-      {/* --- TAB: APPS (SIMULATIONS) --- */}
+      {/* --- TAB: DISCOVER --- */}
+      {activeTab === 'DISCOVER' && (
+        <div className="space-y-8 animate-in slide-in-from-right-4">
+          {/* Header */}
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold font-mono uppercase">Music Discovery</h3>
+              <p className="text-xs text-gray-500">New releases, concerts, and stats</p>
+            </div>
+            <button 
+              onClick={() => setShowSmartPlaylist(true)}
+              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold font-mono text-xs uppercase border-2 border-black shadow-retro-sm hover:opacity-90"
+            >
+              🔄 Smart Playlist
+            </button>
+          </div>
+
+          {/* Listening Report */}
+          <div>
+            <div className="flex items-center gap-4 mb-4">
+              <h4 className="font-bold font-mono text-sm uppercase">📊 Your Stats</h4>
+              <div className="flex gap-2">
+                {(['week', 'month', 'year'] as const).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setReportPeriod(p)}
+                    className={`px-3 py-1 text-xs font-mono font-bold ${reportPeriod === p ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                  >
+                    {p.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ListeningReport period={reportPeriod} />
+          </div>
+
+          {/* Two Column Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Release Radar */}
+            <ReleaseRadar 
+              favoriteArtists={[]} 
+              onPlaySong={onPlaySong} 
+            />
+
+            {/* Concert Finder */}
+            <ConcertFinder 
+              favoriteArtists={[]} 
+            />
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB: APPS --- */}
       {activeTab === 'APPS' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-right-4">
-              {/* VS Code */}
-              <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-[#007acc] transition-colors">
-                  <div className="flex justify-between items-start mb-4">
-                      <div className="p-3 bg-[#007acc] text-white border-2 border-black shadow-sm"><ICONS.Code size={24} /></div>
-                      <div className="px-2 py-1 bg-green-100 border border-green-500 text-[10px] font-bold text-green-700 uppercase">Active</div>
-                  </div>
-                  <h3 className="text-lg font-bold font-mono">VS Code</h3>
-                  <p className="text-xs text-gray-500 mb-4">Contextual coding companion.</p>
-                  
-                  <div className="space-y-2">
-                      <button onClick={() => simulateContext('VS_CODE', 'DEBUG_MODE', 'debugging complex code. Need focus.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#007acc] transition-colors">
-                          ▶ Trigger: Debugging
-                      </button>
-                      <button onClick={() => simulateContext('VS_CODE', 'FLOW_STATE', 'writing new features rapidly. High energy.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#007acc] transition-colors">
-                          ▶ Trigger: Flow State
-                      </button>
-                  </div>
+          <div className="space-y-8 animate-in slide-in-from-right-4">
+            {/* Webhooks Section */}
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold font-mono uppercase flex items-center gap-2">
+                  <ICONS.Activity size={20} /> Webhooks
+                </h3>
+                <button 
+                  onClick={() => setShowWebhookModal(true)}
+                  className="px-4 py-2 bg-black text-white font-bold font-mono text-xs uppercase border-2 border-black shadow-retro-sm hover:bg-gray-800"
+                >
+                  + Add Webhook
+                </button>
               </div>
 
-              {/* Discord */}
-              <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-[#5865F2] transition-colors">
-                  <div className="flex justify-between items-start mb-4">
-                      <div className="p-3 bg-[#5865F2] text-white border-2 border-black shadow-sm"><ICONS.Game size={24} /></div>
-                      <div className="px-2 py-1 bg-green-100 border border-green-500 text-[10px] font-bold text-green-700 uppercase">Active</div>
-                  </div>
-                  <h3 className="text-lg font-bold font-mono">Discord</h3>
-                  <p className="text-xs text-gray-500 mb-4">Voice channel & game presence.</p>
-                  
-                  <div className="space-y-2">
-                      <button onClick={() => simulateContext('DISCORD', 'VC_JOIN', 'just joined a chill voice channel.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#5865F2] transition-colors">
-                          ▶ Trigger: Join VC
-                      </button>
-                      <button onClick={() => simulateContext('DISCORD', 'GAME_START', 'started playing an RPG game.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#5865F2] transition-colors">
-                          ▶ Trigger: Game Launch
-                      </button>
-                  </div>
-              </div>
+              {userWebhooks.length === 0 ? (
+                <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-8 text-center">
+                  <ICONS.Link size={32} className="mx-auto mb-3 text-gray-400" />
+                  <p className="text-gray-500 font-mono text-sm">No webhooks configured</p>
+                  <p className="text-xs text-gray-400 mt-1">Connect to IFTTT, Zapier, or your own server</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {userWebhooks.map(wh => (
+                    <div key={wh.id} className={`border-2 ${wh.enabled ? 'border-black bg-white' : 'border-gray-300 bg-gray-50'} p-4 relative`}>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-bold font-mono">{wh.name}</h4>
+                          <code className="text-[10px] text-gray-500 block truncate max-w-[200px]">{wh.url}</code>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => handleToggleWebhook(wh.id)}
+                            className={`w-10 h-5 rounded-full relative transition-colors ${wh.enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                          >
+                            <span className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-transform ${wh.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {wh.events.map(e => (
+                          <span key={e} className="text-[9px] bg-gray-100 px-1.5 py-0.5 font-mono">{e}</span>
+                        ))}
+                      </div>
 
-              {/* Browser */}
-              <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-orange-500 transition-colors">
-                  <div className="flex justify-between items-start mb-4">
-                      <div className="p-3 bg-orange-500 text-white border-2 border-black shadow-sm"><ICONS.Globe size={24} /></div>
-                      <div className="px-2 py-1 bg-green-100 border border-green-500 text-[10px] font-bold text-green-700 uppercase">Active</div>
-                  </div>
-                  <h3 className="text-lg font-bold font-mono">Browser</h3>
-                  <p className="text-xs text-gray-500 mb-4">Tab-based context sensing.</p>
-                  
-                  <div className="space-y-2">
-                      <button onClick={() => simulateContext('BROWSER', 'READING', 'reading long-form articles. Need calm background.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-orange-500 transition-colors">
-                          ▶ Trigger: Reading Mode
-                      </button>
-                      <button onClick={() => simulateContext('BROWSER', 'SOCIAL', 'browsing social media. Need upbeat pop.')} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-orange-500 transition-colors">
-                          ▶ Trigger: Social Feed
-                      </button>
-                  </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleTestWebhook(wh.id)}
+                          className={`text-[10px] font-bold font-mono px-2 py-1 border ${webhookTestResult?.id === wh.id ? (webhookTestResult.success ? 'border-green-500 text-green-600' : 'border-red-500 text-red-600') : 'border-gray-300 hover:border-black'}`}
+                        >
+                          {webhookTestResult?.id === wh.id ? (webhookTestResult.success ? '✓ OK' : '✗ FAIL') : 'TEST'}
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteWebhook(wh.id)}
+                          className="text-[10px] font-bold font-mono px-2 py-1 border border-red-300 text-red-600 hover:bg-red-50"
+                        >
+                          DELETE
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* External Apps (Simulations) */}
+            <div>
+              <h3 className="text-lg font-bold font-mono uppercase mb-4 flex items-center gap-2">
+                <ICONS.Cpu size={20} /> Context Triggers
+              </h3>
+              <p className="text-xs text-gray-500 mb-4 font-mono">
+                Simulate context events from external apps. Real integrations coming soon.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* VS Code */}
+                <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-[#007acc] transition-colors">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-[#007acc] text-white border-2 border-black shadow-sm"><ICONS.Code size={24} /></div>
+                        <div className="px-2 py-1 bg-yellow-100 border border-yellow-500 text-[10px] font-bold text-yellow-700 uppercase">Simulate</div>
+                    </div>
+                    <h3 className="text-lg font-bold font-mono">VS Code</h3>
+                    <p className="text-xs text-gray-500 mb-4">Coding activity context</p>
+                    
+                    <div className="space-y-2">
+                        <button onClick={() => simulateContext('VS_CODE', 'DEBUG_MODE', 'debugging complex code. Need focus.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#007acc] transition-colors disabled:opacity-50">
+                            ▶ Trigger: Debugging
+                        </button>
+                        <button onClick={() => simulateContext('VS_CODE', 'FLOW_STATE', 'writing new features rapidly. High energy.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#007acc] transition-colors disabled:opacity-50">
+                            ▶ Trigger: Flow State
+                        </button>
+                    </div>
+                </div>
+
+                {/* Discord */}
+                <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-[#5865F2] transition-colors">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-[#5865F2] text-white border-2 border-black shadow-sm"><ICONS.Game size={24} /></div>
+                        <div className="px-2 py-1 bg-yellow-100 border border-yellow-500 text-[10px] font-bold text-yellow-700 uppercase">Simulate</div>
+                    </div>
+                    <h3 className="text-lg font-bold font-mono">Discord</h3>
+                    <p className="text-xs text-gray-500 mb-4">Voice & game activity</p>
+                    
+                    <div className="space-y-2">
+                        <button onClick={() => simulateContext('DISCORD', 'VC_JOIN', 'just joined a chill voice channel.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#5865F2] transition-colors disabled:opacity-50">
+                            ▶ Trigger: Join VC
+                        </button>
+                        <button onClick={() => simulateContext('DISCORD', 'GAME_START', 'started playing an RPG game.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-[#5865F2] transition-colors disabled:opacity-50">
+                            ▶ Trigger: Game Launch
+                        </button>
+                    </div>
+                </div>
+
+                {/* Browser */}
+                <div className="bg-white border-2 border-black p-6 shadow-retro relative overflow-hidden group hover:border-orange-500 transition-colors">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-orange-500 text-white border-2 border-black shadow-sm"><ICONS.Globe size={24} /></div>
+                        <div className="px-2 py-1 bg-yellow-100 border border-yellow-500 text-[10px] font-bold text-yellow-700 uppercase">Simulate</div>
+                    </div>
+                    <h3 className="text-lg font-bold font-mono">Browser</h3>
+                    <p className="text-xs text-gray-500 mb-4">Tab activity context</p>
+                    
+                    <div className="space-y-2">
+                        <button onClick={() => simulateContext('BROWSER', 'READING', 'reading long-form articles. Need calm background.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-orange-500 transition-colors disabled:opacity-50">
+                            ▶ Trigger: Reading Mode
+                        </button>
+                        <button onClick={() => simulateContext('BROWSER', 'SOCIAL', 'browsing social media. Need upbeat pop.')} disabled={!!activeSimulation} className="w-full text-left text-xs font-mono border border-gray-200 p-2 hover:bg-gray-50 hover:border-orange-500 transition-colors disabled:opacity-50">
+                            ▶ Trigger: Social Feed
+                        </button>
+                    </div>
+                </div>
               </div>
+            </div>
+
+            {/* Extension Status */}
+            <div className="bg-gray-50 border-2 border-gray-200 p-4">
+              <h4 className="font-bold font-mono text-sm uppercase mb-3 flex items-center gap-2">
+                <ICONS.Radio size={16} /> Extension Status
+              </h4>
+              <div className="grid grid-cols-3 gap-4">
+                {Object.entries(extensionBridge.EXTENSION_GUIDES).map(([key, guide]) => (
+                  <div key={key} className="text-center">
+                    <div className={`w-3 h-3 rounded-full mx-auto mb-2 ${connectedExtensions.includes(key as any) ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <p className="text-xs font-mono">{guide.title}</p>
+                    <span className="text-[9px] text-gray-400">{guide.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
       )}
 
       {/* --- TAB: DEV (API) --- */}
       {activeTab === 'DEV' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-left-4">
+              {/* API Keys Panel */}
               <div className="lg:col-span-1 space-y-6">
                   <div className="bg-white border-2 border-black p-6 shadow-retro">
-                      <h3 className="text-lg font-bold font-mono mb-4 flex items-center gap-2">
-                          <ICONS.Key size={20} /> API Access
-                      </h3>
-                      <p className="text-xs text-gray-600 font-mono mb-4">
-                          Authenticate custom scripts to control the companion remotely.
-                      </p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold font-mono flex items-center gap-2">
+                            <ICONS.Key size={20} /> API Keys
+                        </h3>
+                        <button 
+                          onClick={() => setShowNewKeyModal(true)}
+                          className="text-xs font-bold font-mono bg-black text-white px-3 py-1 hover:bg-gray-800"
+                        >
+                          + NEW
+                        </button>
+                      </div>
                       
-                      <div className="bg-gray-100 border-2 border-black p-3 relative mb-4">
-                          <code className="block font-mono text-sm break-all pr-8">
-                              {showKey ? apiKey : '•'.repeat(apiKey.length)}
-                          </code>
-                          <button onClick={() => setShowKey(!showKey)} className="absolute top-2 right-2 text-gray-400 hover:text-black">
-                              {showKey ? <ICONS.MicOff size={16} /> : <ICONS.Eye size={16} />}
-                          </button>
-                      </div>
+                      {apiKeys.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">
+                          <ICONS.Key size={32} className="mx-auto mb-2 opacity-50" />
+                          <p className="text-xs font-mono">No API keys created</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                          {apiKeys.map(key => (
+                            <div key={key.id} className="border border-gray-200 p-3">
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <h4 className="font-bold font-mono text-sm">{key.name}</h4>
+                                  <code className="text-[10px] text-gray-400">{key.key.substring(0, 16)}...</code>
+                                </div>
+                                <div className="flex gap-1">
+                                  <button 
+                                    onClick={() => handleCopyKey(key)}
+                                    className={`p-1 border ${copiedKeyId === key.id ? 'border-green-500 text-green-600' : 'border-gray-300 hover:border-black'}`}
+                                  >
+                                    {copiedKeyId === key.id ? <ICONS.Check size={12} /> : <ICONS.Copy size={12} />}
+                                  </button>
+                                  <button 
+                                    onClick={() => handleRevokeKey(key.id)}
+                                    className="p-1 border border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    <ICONS.Close size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {key.scopes.map(scope => (
+                                  <span key={scope} className="text-[9px] bg-gray-100 px-1.5 py-0.5 font-mono">{scope}</span>
+                                ))}
+                              </div>
+                              {key.lastUsed && (
+                                <p className="text-[9px] text-gray-400 mt-1">
+                                  Last used: {new Date(key.lastUsed).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
 
-                      <div className="flex gap-2">
-                          <button onClick={() => navigator.clipboard.writeText(apiKey)} className="flex-1 py-2 border-2 border-black bg-white hover:bg-gray-100 text-xs font-bold font-mono">COPY</button>
-                          <button onClick={regenerateKey} className="px-3 py-2 border-2 border-black hover:bg-red-50 text-red-600"><ICONS.Zap size={16} /></button>
-                      </div>
+                  {/* Quick Start */}
+                  <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                    <h4 className="font-bold font-mono text-sm mb-3">Quick Start</h4>
+                    <pre className="bg-white border border-blue-200 p-3 text-[10px] font-mono overflow-x-auto">
+{`// Browser Console
+const api = window.MusicCompanionAPI;
+
+// Authenticate
+api.authenticate('your_key_here');
+
+// Control playback
+api.play();
+api.pause();
+api.next();
+
+// Get current song
+api.getCurrentSong();`}
+                    </pre>
                   </div>
               </div>
 
+              {/* Event Log */}
               <div className="lg:col-span-2">
-                  <div className="bg-[#1a1a1a] border-2 border-black p-0 shadow-retro h-full min-h-[300px] flex flex-col">
+                  <div className="bg-[#1a1a1a] border-2 border-black p-0 shadow-retro h-full min-h-[500px] flex flex-col">
                       <div className="bg-black text-white px-4 py-2 border-b border-gray-800 flex justify-between items-center">
                           <span className="text-xs font-mono font-bold uppercase">System Event Log</span>
                           <div className="flex items-center gap-2 text-[10px] text-green-500">
@@ -356,9 +655,194 @@ const Extensions: React.FC<ExtensionsProps> = ({
                               </div>
                           ))}
                       </div>
+                      
+                      {/* API Endpoints Reference */}
+                      <div className="border-t border-gray-800 p-4">
+                        <h4 className="text-white font-bold font-mono text-xs mb-3">API REFERENCE</h4>
+                        <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                          <div className="text-gray-400">
+                            <span className="text-cyan-400">GET</span> getCurrentSong()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-cyan-400">GET</span> getPlaybackState()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-yellow-400">POST</span> play(songId?)
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-yellow-400">POST</span> pause()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-yellow-400">POST</span> next()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-yellow-400">POST</span> previous()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-cyan-400">GET</span> getQueue()
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-yellow-400">POST</span> addToQueue(song)
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-purple-400">AI</span> generatePlaylist(prompt)
+                          </div>
+                          <div className="text-gray-400">
+                            <span className="text-green-400">EVENT</span> onSongChange(cb)
+                          </div>
+                        </div>
+                      </div>
                   </div>
               </div>
           </div>
+      )}
+
+      {/* --- MODALS --- */}
+      
+      {/* New API Key Modal */}
+      {showNewKeyModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border-2 border-black shadow-retro p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold font-mono mb-4">Create API Key</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Key Name</label>
+                <input 
+                  type="text"
+                  value={newKeyName}
+                  onChange={e => setNewKeyName(e.target.value)}
+                  placeholder="My Integration"
+                  className="w-full border-2 border-gray-300 p-2 font-mono focus:border-black outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-2">Scopes</label>
+                <div className="space-y-2">
+                  {SCOPES.map(scope => (
+                    <label key={scope.value} className="flex items-start gap-3 p-2 border border-gray-200 hover:border-black cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={newKeyScopes.includes(scope.value)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setNewKeyScopes([...newKeyScopes, scope.value]);
+                          } else {
+                            setNewKeyScopes(newKeyScopes.filter(s => s !== scope.value));
+                          }
+                        }}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="font-bold font-mono text-sm">{scope.label}</span>
+                        <p className="text-xs text-gray-500">{scope.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                onClick={() => setShowNewKeyModal(false)}
+                className="flex-1 py-2 border-2 border-gray-300 font-bold font-mono text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCreateApiKey}
+                disabled={!newKeyName.trim() || newKeyScopes.length === 0}
+                className="flex-1 py-2 bg-black text-white font-bold font-mono text-sm border-2 border-black disabled:opacity-50"
+              >
+                Create Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Webhook Modal */}
+      {showWebhookModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border-2 border-black shadow-retro p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold font-mono mb-4">Add Webhook</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Name</label>
+                <input 
+                  type="text"
+                  value={newWebhookName}
+                  onChange={e => setNewWebhookName(e.target.value)}
+                  placeholder="My Server"
+                  className="w-full border-2 border-gray-300 p-2 font-mono focus:border-black outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Webhook URL</label>
+                <input 
+                  type="url"
+                  value={newWebhookUrl}
+                  onChange={e => setNewWebhookUrl(e.target.value)}
+                  placeholder="https://example.com/webhook"
+                  className="w-full border-2 border-gray-300 p-2 font-mono text-sm focus:border-black outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-2">Events</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {webhooks.WEBHOOK_EVENTS.map(evt => (
+                    <label key={evt.value} className="flex items-center gap-2 text-xs font-mono cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={newWebhookEvents.includes(evt.value)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setNewWebhookEvents([...newWebhookEvents, evt.value]);
+                          } else {
+                            setNewWebhookEvents(newWebhookEvents.filter(v => v !== evt.value));
+                          }
+                        }}
+                      />
+                      {evt.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                onClick={() => setShowWebhookModal(false)}
+                className="flex-1 py-2 border-2 border-gray-300 font-bold font-mono text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCreateWebhook}
+                disabled={!newWebhookName.trim() || !newWebhookUrl.trim() || newWebhookEvents.length === 0}
+                className="flex-1 py-2 bg-black text-white font-bold font-mono text-sm border-2 border-black disabled:opacity-50"
+              >
+                Add Webhook
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Playlist Modal */}
+      {showSmartPlaylist && (
+        <SmartPlaylistEditor
+          onSave={(playlist) => {
+            console.log('[Extensions] Smart playlist created:', playlist);
+            setShowSmartPlaylist(false);
+          }}
+          onClose={() => setShowSmartPlaylist(false)}
+        />
       )}
     </div>
   );

@@ -1,16 +1,36 @@
-
 {
-  "short_name": "MusicComp",
   "name": "Music Companion AI",
+  "short_name": "MusicComp",
+  "description": "Your AI-powered music companion for discovering, playing, and exploring music",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#fb923c",
+  "orientation": "any",
   "icons": [
     {
-      "src": "favicon.ico",
+      "src": "/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "categories": ["music", "entertainment"],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/?view=dashboard",
+      "description": "Go to Dashboard"
+    },
+    {
+      "name": "Live Mode",
+      "url": "/?view=live",
+      "description": "Start Live Voice Mode"
+    }
+  ]
 }

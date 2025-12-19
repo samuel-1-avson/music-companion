@@ -5,8 +5,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Music Companion AI</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#fb923c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
       :root {
         /* CLASSIC THEME (Default) */
@@ -217,6 +223,31 @@
         --shadow: #7f1d1d;
       }
 
+      /* HIGH CONTRAST ACCESSIBILITY THEME */
+      body[data-theme='high-contrast'] {
+        --bg-main: #000000;
+        --bg-card: #000000;
+        --bg-hover: #1a1a1a;
+        --text-main: #ffffff;
+        --text-muted: #e0e0e0;
+        --primary: #ffff00; /* Pure yellow for maximum visibility */
+        --primary-hover: #ffcc00;
+        --border: #ffffff;
+        --shadow: #ffffff;
+      }
+      
+      /* High contrast overrides for better readability */
+      body[data-theme='high-contrast'] * {
+        font-weight: 500 !important;
+      }
+      body[data-theme='high-contrast'] button,
+      body[data-theme='high-contrast'] a {
+        text-decoration: underline;
+      }
+      body[data-theme='high-contrast'] .border-2 {
+        border-width: 3px !important;
+      }
+
       body { 
         font-family: 'Inter', sans-serif; 
         background-color: var(--bg-main);
@@ -303,5 +334,22 @@
 </head>
   <body class="bg-[var(--bg-main)] text-[var(--text-main)] overflow-hidden">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('SW registered:', registration.scope);
+            })
+            .catch(err => {
+              console.log('SW registration failed:', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
+
