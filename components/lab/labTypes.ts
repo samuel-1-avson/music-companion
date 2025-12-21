@@ -38,14 +38,15 @@ export interface EnvelopeState {
 // --- CONSTANTS ---
 
 export const SOUNDS: SoundConfig[] = [
-  { id: 'rain', label: 'Heavy Rain', icon: ICONS.Rain, color: 'text-blue-400', bg: 'bg-blue-900/20', url: 'https://cdn.pixabay.com/download/audio/2021/09/06/audio_34235e160a.mp3?filename=rain-thunder-heavy-weather-17154.mp3' },
-  { id: 'ocean', label: 'Ocean Waves', icon: ICONS.Waves, color: 'text-cyan-400', bg: 'bg-cyan-900/20', url: 'https://cdn.pixabay.com/download/audio/2021/08/09/audio_03e047372d.mp3' },
-  { id: 'forest', label: 'Forest Life', icon: ICONS.Trees, color: 'text-green-400', bg: 'bg-green-900/20', url: 'https://cdn.pixabay.com/download/audio/2022/02/07/audio_658359218c.mp3' },
-  { id: 'fire', label: 'Fireplace', icon: ICONS.Flame, color: 'text-orange-400', bg: 'bg-orange-900/20', url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3' },
-  { id: 'night', label: 'Night Crickets', icon: ICONS.Moon, color: 'text-indigo-400', bg: 'bg-indigo-900/20', url: 'https://cdn.pixabay.com/download/audio/2021/09/06/audio_73d2a012a6.mp3' },
-  { id: 'keyboard', label: 'Mech Keys', icon: ICONS.Code, color: 'text-gray-400', bg: 'bg-gray-800/20', url: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_5174092d6e.mp3?filename=keyboard-typing-13865.mp3' },
-  { id: 'coffee', label: 'Coffee Shop', icon: ICONS.Coffee, color: 'text-amber-600', bg: 'bg-amber-900/20', url: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_3a936a715f.mp3?filename=cafe-ambience-6379.mp3' },
-  { id: 'vinyl', label: 'Vinyl Crackle', icon: ICONS.Disc, color: 'text-neutral-500', bg: 'bg-neutral-800/20', url: 'https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f792cb.mp3?filename=vinyl-crackle-40995.mp3' }
+  // Using free CC0 audio from SoundBible and other reliable sources
+  { id: 'rain', label: 'Heavy Rain', icon: ICONS.Rain, color: 'text-blue-400', bg: 'bg-blue-900/20', url: 'https://soundbible.com/mp3/rain_thunder-GoodListener-1253005915.mp3' },
+  { id: 'ocean', label: 'Ocean Waves', icon: ICONS.Waves, color: 'text-cyan-400', bg: 'bg-cyan-900/20', url: 'https://soundbible.com/mp3/ocean_waves_1-Mike_Koenig-980635527.mp3' },
+  { id: 'forest', label: 'Forest Life', icon: ICONS.Trees, color: 'text-green-400', bg: 'bg-green-900/20', url: 'https://soundbible.com/mp3/Rainforest_Ambience-Glitch-1792.mp3' },
+  { id: 'fire', label: 'Fireplace', icon: ICONS.Flame, color: 'text-orange-400', bg: 'bg-orange-900/20', url: 'https://soundbible.com/mp3/Crackling_Fireplace-EverythingAudio-SoundBible.com-870852653.mp3' },
+  { id: 'night', label: 'Night Crickets', icon: ICONS.Moon, color: 'text-indigo-400', bg: 'bg-indigo-900/20', url: 'https://soundbible.com/mp3/Cricket_Song-Yanniss-12259.mp3' },
+  { id: 'keyboard', label: 'Mech Keys', icon: ICONS.Code, color: 'text-gray-400', bg: 'bg-gray-800/20', url: 'https://soundbible.com/mp3/computer_keyboard_typing-Mike_Koenig-673078135.mp3' },
+  { id: 'coffee', label: 'Coffee Shop', icon: ICONS.Coffee, color: 'text-amber-600', bg: 'bg-amber-900/20', url: 'https://soundbible.com/mp3/Restaurant%20Crowd-SoundBible.com-1664537599.mp3' },
+  { id: 'vinyl', label: 'Vinyl Crackle', icon: ICONS.Disc, color: 'text-neutral-500', bg: 'bg-neutral-800/20', url: 'https://soundbible.com/mp3/Crowd_Chatting-SoundBible.com-1895724.mp3' }
 ];
 
 export const AMBIENT_PRESETS: AmbientPreset[] = [

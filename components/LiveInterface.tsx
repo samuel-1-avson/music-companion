@@ -132,8 +132,9 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
   const [musicVolume, setMusicVolume] = useState(0);
   const musicAnimRef = useRef<number | null>(null);
   
-  // Animation State
-  const [rotation, setRotation] = useState(0);
+  // Animation State - Using refs for values updated in animation loops to prevent re-renders
+  const rotationRef = useRef(0);
+  const [, forceUpdate] = useState(0); // Force re-render only when needed
   const animationFrameRef = useRef<number | null>(null);
 
   const p = PERSONALITIES.find(x => x.id === selectedPid) || PERSONALITIES[0];
@@ -233,10 +234,10 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
       };
   }, [musicAnalyser]);
 
-  // Global Rotation Animation Loop
+  // Global Rotation Animation Loop - Using ref to avoid state updates on every frame
   useEffect(() => {
       const animate = () => {
-          setRotation(r => (r + 0.5) % 360);
+          rotationRef.current = (rotationRef.current + 0.5) % 360;
           animationFrameRef.current = requestAnimationFrame(animate);
       };
       animate();
@@ -325,7 +326,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
                         className={`absolute w-1.5 h-1.5 bg-white rounded-full animate-[ping_1.5s_infinite]`}
                         style={{ 
                             top: '50%', left: '50%',
-                            transform: `rotate(${i * 60 + rotation}deg) translateX(${60 + speechLevel}px)`,
+                            transform: `rotate(${i * 60 + rotationRef.current}deg) translateX(${60 + speechLevel}px)`,
                             opacity: 0.8,
                             animationDelay: `${i * 0.2}s`
                         }}
@@ -375,7 +376,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
                         className={`absolute w-1 h-1 bg-${p.theme.primary}-200 rounded-full`}
                         style={{ 
                             top: '50%', left: '50%',
-                            transform: `rotate(${i * 45 + rotation/2}deg) translateX(${80 + (speechLevel * 1.5)}px)`,
+                            transform: `rotate(${i * 45 + rotationRef.current/2}deg) translateX(${80 + (speechLevel * 1.5)}px)`,
                             opacity: 0.6,
                             transition: 'transform 0.2s ease-out'
                         }}
@@ -406,11 +407,11 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
                 {/* Spinning Rings - Music speeds up rotation */}
                 <div 
                     className={`absolute inset-8 rounded-full border-2 border-${p.theme.primary}-500/50 border-t-transparent animate-[spin_3s_linear_infinite]`}
-                    style={{ transform: `scale(${coreScale}) rotate(${rotation + (musicLevel * 2)}deg)` }}
+                    style={{ transform: `scale(${coreScale}) rotate(${rotationRef.current + (musicLevel * 2)}deg)` }}
                 ></div>
                 <div 
                     className={`absolute inset-16 rounded-full border-2 border-${p.theme.primary}-400/30 border-b-transparent animate-[spin_5s_linear_infinite_reverse]`}
-                    style={{ transform: `scale(${coreScale * 0.9}) rotate(-${rotation + (musicLevel)}deg)` }}
+                    style={{ transform: `scale(${coreScale * 0.9}) rotate(-${rotationRef.current + (musicLevel)}deg)` }}
                 ></div>
                 
                 {/* Data Particles - React to Speech */}
@@ -420,7 +421,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
                             key={i}
                             className={`absolute w-1 h-1 bg-${p.theme.primary}-300 rounded-full`}
                             style={{
-                                transform: `rotate(${i * 30 + rotation * 2}deg) translateX(${120 + speechLevel}px)`,
+                                transform: `rotate(${i * 30 + rotationRef.current * 2}deg) translateX(${120 + speechLevel}px)`,
                                 boxShadow: `0 0 5px currentColor`,
                                 transition: 'transform 0.1s linear'
                             }}
@@ -503,7 +504,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
               <div className="perspective-[800px] w-64 h-64 flex items-center justify-center">
                   <div 
                     className={`relative w-32 h-32 transform-style-3d`}
-                    style={{ transform: `rotateX(${combinedVol + rotation}deg) rotateY(${combinedVol + rotation}deg)` }}
+                    style={{ transform: `rotateX(${combinedVol + rotationRef.current}deg) rotateY(${combinedVol + rotationRef.current}deg)` }}
                   >
                       <div className={`absolute inset-0 border-2 border-${p.theme.primary}-400 bg-${p.theme.primary}-900/20`}></div>
                       <div className={`absolute inset-0 border-2 border-${p.theme.primary}-400 bg-${p.theme.primary}-900/20 translate-z-16`} style={{ transform: 'translateZ(32px)' }}></div>
