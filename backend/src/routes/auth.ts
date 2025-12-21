@@ -7,6 +7,7 @@ import axios from 'axios';
 import { config } from '../utils/config.js';
 import { generateVerificationCode, sendVerificationCodeEmail } from '../services/emailService.js';
 import { safeEncryptToken } from '../services/cryptoService.js';
+import { getSupabaseClient } from '../services/supabase.js';
 
 const router = Router();
 
@@ -119,14 +120,13 @@ router.get('/spotify/callback', async (req, res) => {
     // Check if emails match
     const emailsMatch = user_email.toLowerCase() === provider_email.toLowerCase();
 
-    if (user_id && config.supabase.isConfigured) {
-      const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+      const supabase = getSupabaseClient();
       
-      if (emailsMatch) {
-        // Emails match - auto-verify and save
-        await axios.post(
-          `${config.supabase.url}/rest/v1/user_integrations`,
-          {
+      if (emailsMatch && supabase) {
+        // Emails match - auto-verified and save
+        const { error: dbError } = await supabase
+          .from('user_integrations')
+          .upsert({
             user_id,
             provider: 'spotify',
             access_token: safeEncryptToken(access_token),
@@ -141,27 +141,21 @@ router.get('/spotify/callback', async (req, res) => {
             metadata: { scopes: SPOTIFY_SCOPES.split(' ') },
             connected_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          },
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'resolution=merge-duplicates',
-            }
-          }
-        );
-        console.log('[Spotify OAuth] Auto-verified and saved for user:', user_id);
+          }, { onConflict: 'user_id,provider' });
+          
+        if (dbError) console.error('[Spotify OAuth] DB Error:', dbError);
+        else console.log('[Spotify OAuth] Auto-verified and saved for user:', user_id);
+        
         return res.redirect(`${config.frontendUrl}/integrations?spotify_connected=true`);
-      } else {
+      } else if (supabase) {
         // Emails don't match - require verification
         const verificationCode = generateVerificationCode();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
         // Save pending integration with verification code
-        await axios.post(
-          `${config.supabase.url}/rest/v1/user_integrations`,
-          {
+        const { error: dbError } = await supabase
+          .from('user_integrations')
+          .upsert({
             user_id,
             provider: 'spotify',
             access_token: safeEncryptToken(access_token),
@@ -178,16 +172,9 @@ router.get('/spotify/callback', async (req, res) => {
             metadata: { scopes: SPOTIFY_SCOPES.split(' '), pending_verification: true },
             connected_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          },
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'resolution=merge-duplicates',
-            }
-          }
-        );
+          }, { onConflict: 'user_id,provider' });
+
+        if (dbError) console.error('[Spotify OAuth] DB Error (Pending):', dbError);
 
         // Send verification email
         await sendVerificationCodeEmail(provider_email, verificationCode, 'spotify', user_email);
@@ -195,7 +182,7 @@ router.get('/spotify/callback', async (req, res) => {
         console.log('[Spotify OAuth] Verification required for user:', user_id);
         return res.redirect(`${config.frontendUrl}/integrations?verification_required=true&provider=spotify&provider_email=${encodeURIComponent(provider_email)}`);
       }
-    }
+
 
     // Fallback if no user_id or supabase not configured
     res.redirect(`${config.frontendUrl}/integrations?spotify_connected=true`);
@@ -221,20 +208,19 @@ router.post('/verify-integration', async (req, res) => {
   }
 
   try {
-    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
 
     // Get the pending integration
-    const getResponse = await axios.get(
-      `${config.supabase.url}/rest/v1/user_integrations?user_id=eq.${user_id}&provider=eq.${provider}&select=*`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-        }
-      }
-    );
+    const { data: integrations, error } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('provider', provider);
+      
+    if (error) throw error;
 
-    const integrations = getResponse.data;
+
     if (!integrations || integrations.length === 0) {
       return res.status(404).json({ success: false, error: 'Integration not found' });
     }
@@ -257,23 +243,16 @@ router.post('/verify-integration', async (req, res) => {
     }
 
     // Mark as verified
-    await axios.patch(
-      `${config.supabase.url}/rest/v1/user_integrations?id=eq.${integration.id}`,
-      {
+    await supabase
+      .from('user_integrations')
+      .update({
         email_verified: true,
         verification_code: null,
         verification_expires_at: null,
         metadata: { ...integration.metadata, pending_verification: false },
         updated_at: new Date().toISOString(),
-      },
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        }
-      }
-    );
+      })
+      .eq('id', integration.id);
 
     console.log('[Auth] Integration verified for user:', user_id, 'provider:', provider);
     return res.json({ success: true, message: 'Integration verified' });
@@ -428,12 +407,11 @@ router.get('/discord/callback', async (req, res) => {
     }
 
     // Save to Supabase
-    if (user_id && config.supabase.isConfigured) {
-      const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
-      
-      await axios.post(
-        `${config.supabase.url}/rest/v1/user_integrations`,
-        {
+    const supabase = getSupabaseClient();
+    if (user_id && supabase) {
+      await supabase
+        .from('user_integrations')
+        .upsert({
           user_id,
           provider: 'discord',
           access_token: safeEncryptToken(access_token),
@@ -448,16 +426,8 @@ router.get('/discord/callback', async (req, res) => {
           metadata: { scopes: ['identify', 'email'] },
           connected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        },
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates',
-          }
-        }
-      );
+        }, { onConflict: 'user_id,provider' });
+        
       console.log('[Discord OAuth] Saved integration for user:', user_id);
     }
 
@@ -613,12 +583,11 @@ router.get('/youtube/callback', async (req, res) => {
     const provider_avatar_url = googleUser.picture || '';
 
     // Save to Supabase
-    if (user_id && config.supabase.isConfigured) {
-      const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
-      
-      await axios.post(
-        `${config.supabase.url}/rest/v1/user_integrations`,
-        {
+    const supabase = getSupabaseClient();
+    if (user_id && supabase) {
+      await supabase
+        .from('user_integrations')
+        .upsert({
           user_id,
           provider: 'youtube',
           access_token: safeEncryptToken(access_token),
@@ -633,16 +602,8 @@ router.get('/youtube/callback', async (req, res) => {
           metadata: { scopes: ['youtube.readonly', 'userinfo.email', 'userinfo.profile'] },
           connected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        },
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates',
-          }
-        }
-      );
+        }, { onConflict: 'user_id,provider' });
+        
       console.log('[YouTube OAuth] Saved integration for user:', user_id);
     }
 
@@ -760,12 +721,11 @@ router.get('/lastfm/callback', async (req, res) => {
       const { name, key, subscriber } = response.data.session;
       
       // Save to Supabase if user_id is provided
-      if (user_id && config.supabase.isConfigured) {
-         const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
-         
-         await axios.post(
-          `${config.supabase.url}/rest/v1/user_integrations`,
-          {
+      const supabase = getSupabaseClient();
+      if (user_id && supabase) {
+         await supabase
+          .from('user_integrations')
+          .upsert({
             user_id,
             provider: 'lastfm',
             provider_username: name,
@@ -774,16 +734,8 @@ router.get('/lastfm/callback', async (req, res) => {
             metadata: { session_key: safeEncryptToken(key), subscriber: subscriber === '1' },
             connected_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          },
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'resolution=merge-duplicates',
-            }
-          }
-        );
+          }, { onConflict: 'user_id,provider' });
+          
         console.log('[Last.fm OAuth] Saved session for user:', user_id);
       }
 

@@ -7,18 +7,13 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
 
-// Supabase configuration - Use service role key to bypass RLS for backend operations
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-// Service role key bypasses Row Level Security - required for backend operations
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+// Supabase configuration
+import { getSupabaseClient } from './supabase.js';
 
-// Create Supabase client
-let supabase: SupabaseClient | null = null;
+// Get shared Supabase client
+const supabase = getSupabaseClient();
 
-if (SUPABASE_URL && SUPABASE_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-  console.log('[DownloadDB] Connected to Supabase');
-} else {
+if (!supabase) {
   console.warn('[DownloadDB] Supabase not configured, using in-memory storage');
 }
 

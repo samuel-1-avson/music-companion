@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:setup": "tsx scripts/setup-db.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",
