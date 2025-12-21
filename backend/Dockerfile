@@ -16,6 +16,7 @@ RUN npm install
 
 # Copy source code from backend directory
 COPY backend/src ./src
+COPY backend/scripts ./scripts
 COPY backend/tsconfig.json ./
 
 # Create data directory
