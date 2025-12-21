@@ -6,7 +6,8 @@ import { Router } from 'express';
 import axios from 'axios';
 import { config } from '../utils/config.js';
 import { generateVerificationCode, sendVerificationCodeEmail } from '../services/emailService.js';
-import { safeEncryptToken } from '../services/cryptoService.js';
+
+import { safeEncryptToken, safeDecryptToken } from '../services/cryptoService.js';
 import { getSupabaseClient } from '../services/supabase.js';
 
 const router = Router();
@@ -298,6 +299,57 @@ router.post('/spotify/refresh', async (req, res) => {
   } catch (err: any) {
     console.error('Spotify token refresh error:', err.response?.data || err.message);
     res.status(401).json({ success: false, error: 'Failed to refresh token' });
+  }
+});
+
+/**
+ * Get Spotify access token (for initial load)
+ * GET /auth/spotify/token?user_id=xxx
+ */
+router.get('/spotify/token', async (req, res) => {
+  const { user_id } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
+
+    const { data, error } = await supabase
+      .from('user_integrations')
+      .select('access_token, token_expires_at, tokens_encrypted')
+      .eq('user_id', user_id)
+      .eq('provider', 'spotify')
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ success: false, error: 'No Spotify integration found' });
+    }
+
+    const accessToken = safeDecryptToken(data.access_token, data.tokens_encrypted);
+    
+    // Check if expired
+    const expiresAt = data.token_expires_at ? new Date(data.token_expires_at).getTime() : null;
+    
+    // If we have a refresh token (we don't check here, but IntegrationTokenManager will handle it),
+    // we return what we have. Frontend can trigger refresh if needed via tokenManager.
+    
+    res.json({
+      success: true,
+      data: {
+        accessToken,
+        expiresAt
+      }
+    });
+  } catch (err: any) {
+    console.error('[Spotify Token] Error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to retrieve token' });
   }
 });
 

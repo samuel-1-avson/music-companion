@@ -3,6 +3,7 @@ import { supabase } from '../utils/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 import { tokenManager, SpotifyTokens as TokenManagerTokens } from '../services/TokenManager';
 import { integrationTokenManager } from '../services/IntegrationTokenManager';
+import api from '../utils/apiClient';
 
 // User profile type
 export interface UserProfile {
@@ -151,6 +152,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (spotifyTokens) {
           tokenManager.setTokens(spotifyTokens);
           console.log('[Auth] Spotify connected via OAuth, synced to TokenManager');
+        } else {
+          // If no session token, check if we have one in backend (from Connect flow)
+          try {
+             // We can't use await here nicely inside useEffect without IIFE, 
+             // but we can start the promise.
+             api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
+               .then(response => {
+                 if (response.success && response.data) {
+                   console.log('[Auth] Spotify tokens retrieved from backend');
+                   const backendTokens = {
+                     accessToken: response.data.accessToken,
+                     expiresAt: response.data.expiresAt
+                   };
+                   tokenManager.setTokens(backendTokens);
+                   setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
+                 }
+               })
+               .catch(err => console.warn('[Auth] No backend Spotify token found:', err));
+          } catch (e) {
+            // Ignore
+          }
         }
         
         // Initialize multi-provider token manager for Discord/YouTube refresh
