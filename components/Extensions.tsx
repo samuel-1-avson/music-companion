@@ -8,6 +8,7 @@ import * as lastfm from '../services/lastfmService';
 import * as devApi from '../services/developerApiService';
 import * as webhooks from '../services/webhookService';
 import * as extensionBridge from '../services/extensionBridge';
+import { useAuth } from '../contexts/AuthContext';
 
 // Phase 5 Components - Lazy loaded for performance
 const ReleaseRadar = lazy(() => import('./ReleaseRadar'));
@@ -50,6 +51,7 @@ const Extensions: React.FC<ExtensionsProps> = ({
     onSetMusicProvider,
     onDisconnectSpotify
 }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'SOURCES' | 'DISCOVER' | 'APPS' | 'DEV'>('SOURCES');
   const [showSmartPlaylist, setShowSmartPlaylist] = useState(false);
   const [reportPeriod, setReportPeriod] = useState<'week' | 'month' | 'year'>('week');
@@ -161,7 +163,11 @@ const Extensions: React.FC<ExtensionsProps> = ({
   const handleSpotifyConnect = () => {
       // Use backend OAuth flow - more secure, handles token exchange server-side
       // Backend redirects to Spotify, then back to backend callback, then to frontend with token
-      const backendAuthUrl = 'http://localhost:3001/auth/spotify';
+      if (!user) {
+          console.error('[Extensions] Cannot connect Spotify: User not authenticated');
+          return;
+      }
+      const backendAuthUrl = `http://localhost:3001/auth/spotify?user_id=${user.id}&user_email=${encodeURIComponent(user.email || '')}`;
       window.location.href = backendAuthUrl;
   };
 
