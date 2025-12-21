@@ -801,24 +801,22 @@ router.delete('/disconnect/:provider', async (req, res) => {
   }
 
   try {
-    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
 
     // Delete from user_integrations table
-    const response = await axios.delete(
-      `${config.supabase.url}/rest/v1/user_integrations?user_id=eq.${user_id}&provider=eq.${provider}`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        }
-      }
-    );
+    const { error } = await supabase
+      .from('user_integrations')
+      .delete()
+      .eq('user_id', user_id)
+      .eq('provider', provider);
+
+    if (error) throw error;
 
     console.log(`[Auth] Disconnected ${provider} for user ${user_id}`);
     return res.json({ success: true, message: `Disconnected from ${provider}` });
   } catch (err: any) {
-    console.error(`[Auth] Disconnect ${provider} error:`, err.response?.data || err.message);
+    console.error(`[Auth] Disconnect ${provider} error:`, err.message);
     return res.status(500).json({ success: false, error: 'Failed to disconnect' });
   }
 });
@@ -845,24 +843,22 @@ router.post('/disconnect/:provider', async (req, res) => {
   }
 
   try {
-    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
 
     // Delete from user_integrations table
-    await axios.delete(
-      `${config.supabase.url}/rest/v1/user_integrations?user_id=eq.${user_id}&provider=eq.${provider}`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        }
-      }
-    );
+    const { error } = await supabase
+      .from('user_integrations')
+      .delete()
+      .eq('user_id', user_id)
+      .eq('provider', provider);
+
+    if (error) throw error;
 
     console.log(`[Auth] Disconnected ${provider} for user ${user_id}`);
     return res.json({ success: true, message: `Disconnected from ${provider}` });
   } catch (err: any) {
-    console.error(`[Auth] Disconnect ${provider} error:`, err.response?.data || err.message);
+    console.error(`[Auth] Disconnect ${provider} error:`, err.message);
     return res.status(500).json({ success: false, error: 'Failed to disconnect' });
   }
 });
