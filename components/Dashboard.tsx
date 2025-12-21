@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import MoodChart from './MoodChart';
 import { ICONS } from '../constants';
 import { Song, AppView, MoodData, DashboardInsight, MusicProvider } from '../types';
@@ -77,8 +77,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Real Spotify data
   const { topTracks, recentlyPlayed, hasSpotifyAccess, isLoading: spotifyLoading } = useSpotifyData();
 
-  // Convert Spotify track to Song format
-  const spotifyTrackToSong = (track: SpotifyTrack): Song => {
+  // Convert Spotify track to Song format - memoized to prevent recreation
+  const spotifyTrackToSong = useCallback((track: SpotifyTrack): Song => {
     const minutes = Math.floor(track.duration_ms / 60000);
     const seconds = Math.floor((track.duration_ms % 60000) / 1000);
     return {
@@ -93,7 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       externalUrl: track.external_urls.spotify,
       mood: 'Spotify'
     };
-  };
+  }, []);
 
   // Suggested songs - use real Spotify data or fallback to empty
   const suggestedSongs = useMemo<Song[]>(() => {
@@ -103,20 +103,19 @@ const Dashboard: React.FC<DashboardProps> = ({
       : recentlyPlayed.slice(0, 8).map(item => item.track);
     
     return tracks.map(spotifyTrackToSong);
-  }, [topTracks, recentlyPlayed]);
+  }, [topTracks, recentlyPlayed, spotifyTrackToSong]);
 
-  // Time of day greeting
-  const hour = new Date().getHours();
-  const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-
-  // Calculate Level Title (Subtle)
-  const userLevel = Math.floor(moodData.length / 5) + 1;
-  const getLevelTitle = (lvl: number) => {
-     if (lvl < 2) return "Novice";
-     if (lvl < 5) return "Explorer";
-     if (lvl < 10) return "Curator";
-     return "Architect";
-  };
+  // Time-based values - memoized to prevent recalculation
+  const { timeGreeting, userLevel, levelTitle } = useMemo(() => {
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const level = Math.floor(moodData.length / 5) + 1;
+    let title = "Novice";
+    if (level >= 10) title = "Architect";
+    else if (level >= 5) title = "Curator";
+    else if (level >= 2) title = "Explorer";
+    return { timeGreeting: greeting, userLevel: level, levelTitle: title };
+  }, [moodData.length]);
 
   // Fetch Phase 2 data on mount
   useEffect(() => {
@@ -173,7 +172,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [searchQuery]);
 
-  const refreshInsights = async () => {
+  // Memoized callback for refreshing insights
+  const refreshInsights = useCallback(async () => {
      setLoadingInsight(true);
      try {
          const data = await generateDashboardInsights(moodData);
@@ -183,9 +183,10 @@ const Dashboard: React.FC<DashboardProps> = ({
      } finally {
          setLoadingInsight(false);
      }
-  };
+  }, [moodData]);
 
-  const handleSearch = async (e: React.FormEvent) => {
+  // Memoized search handler
+  const handleSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) {
       setSearchPerformed(false);
@@ -204,25 +205,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [searchQuery, musicProvider, spotifyToken]);
 
-  const clearSearch = () => {
+  // Memoized clear search handler
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
     setSearchResults([]);
     setSearchPerformed(false);
     setShowDropdown(false);
     setAppResults([]);
-  };
+  }, []);
 
-  const handleAppShortcut = (shortcut: typeof APP_SHORTCUTS[0]) => {
+  // Memoized app shortcut handler
+  const handleAppShortcut = useCallback((shortcut: typeof APP_SHORTCUTS[0]) => {
     setShowDropdown(false);
     setSearchQuery('');
     onChangeView(shortcut.view);
-  };
+  }, [onChangeView]);
 
-  const getIconComponent = (iconName: string) => {
+  // Memoized icon component getter
+  const getIconComponent = useCallback((iconName: string) => {
     return (ICONS as any)[iconName] || ICONS.Music;
-  };
+  }, []);
 
   const renderSongRow = (song: Song, contextQueue: Song[]) => (
     <div 
@@ -259,7 +263,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-card)]/50 backdrop-blur-sm">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                       <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)]">
-                          System Online • {getLevelTitle(userLevel)}
+                          System Online • {levelTitle}
                       </span>
                   </div>
                   <h1 className="text-4xl md:text-6xl font-light tracking-tight text-[var(--text-main)]">

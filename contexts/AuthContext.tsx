@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { supabase } from '../utils/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 import { tokenManager, SpotifyTokens as TokenManagerTokens } from '../services/TokenManager';
+import { integrationTokenManager } from '../services/IntegrationTokenManager';
 
 // User profile type
 export interface UserProfile {
@@ -152,6 +153,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.log('[Auth] Spotify connected via OAuth, synced to TokenManager');
         }
         
+        // Initialize multi-provider token manager for Discord/YouTube refresh
+        integrationTokenManager.setUserId(session.user.id);
+        
         setState({
           user: session.user,
           profile,
@@ -260,6 +264,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = useCallback(async () => {
     // Clear Supabase session
     await supabase.auth.signOut();
+    
+    // Clear token managers
+    tokenManager.clear();
+    integrationTokenManager.setUserId(null);
     
     // Clear all localStorage items that might persist session
     localStorage.removeItem('spotify_access_token');

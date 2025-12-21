@@ -95,4 +95,5 @@ CREATE TRIGGER trigger_user_integrations_updated_at
 -- Grant permissions
 -- ============================================
 GRANT ALL ON user_integrations TO authenticated;
-GRANT SELECT ON user_integrations TO anon;
+-- NOTE: Anonymous access removed for security (tokens should not be exposed)
+-- GRANT SELECT ON user_integrations TO anon;

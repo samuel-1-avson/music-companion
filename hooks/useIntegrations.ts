@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../utils/apiClient';
 
 export interface Integration {
   id: string;
@@ -131,12 +132,11 @@ export function useIntegrations() {
 
     try {
       console.log(`[Integrations] Connecting to ${provider}...`);
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const userEmail = user.email || '';
 
       // ALL providers use backend OAuth (stores in user_integrations table)
       // This avoids Supabase "account already linked" conflicts
-      window.location.href = `${backendUrl}/auth/${provider}?user_id=${user.id}&user_email=${encodeURIComponent(userEmail)}`;
+      api.redirectToOAuth(provider, user.id, userEmail);
       return true;
     } catch (err: any) {
       console.error(`[Integrations] ${provider} connect error:`, err);
@@ -152,15 +152,13 @@ export function useIntegrations() {
     if (!user) return false;
 
     try {
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/auth/verify-integration`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, provider, code }),
+      const response = await api.post('/auth/verify-integration', {
+        user_id: user.id,
+        provider,
+        code,
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.success) {
         console.log(`[Integrations] ${provider} verified successfully`);
         await loadIntegrations(); // Reload integrations
         return true;
@@ -182,21 +180,15 @@ export function useIntegrations() {
     if (!user) return false;
 
     try {
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      
       console.log(`[Integrations] Disconnecting ${provider}...`);
       
       // Call backend disconnect endpoint to remove from user_integrations table
-      const response = await fetch(`${backendUrl}/auth/disconnect/${provider}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id }),
+      const response = await api.post(`/auth/disconnect/${provider}`, {
+        user_id: user.id,
       });
-
-      const data = await response.json();
       
-      if (!response.ok) {
-        console.error(`[Integrations] Disconnect ${provider} failed:`, data.error);
+      if (!response.success) {
+        console.error(`[Integrations] Disconnect ${provider} failed:`, response.error);
       }
 
       // For Spotify: clear TokenManager and localStorage tokens

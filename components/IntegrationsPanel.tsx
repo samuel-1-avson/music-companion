@@ -12,6 +12,7 @@ import { useSpotifyData } from '../hooks/useSpotifyData';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import EmailVerificationModal from './EmailVerificationModal';
+import api from '../utils/apiClient';
 
 interface IntegrationCardProps {
   provider: string;
@@ -273,61 +274,63 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
 
     try {
       // Generate verification code from backend
-      const response = await fetch('http://localhost:3001/auth/telegram/generate-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
-      });
-
-      const data = await response.json();
+      const response = await api.post('/auth/telegram/generate-code', { userId: user.id });
       
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to generate code');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to generate code');
       }
 
-      setTelegramCode(data.data.code);
-      setTelegramDeepLink(data.data.deepLink);
+      setTelegramCode(response.data.code);
+      setTelegramDeepLink(response.data.deepLink);
 
       // Open Telegram deep link
-      window.open(data.data.deepLink, '_blank');
+      window.open(response.data.deepLink, '_blank');
 
-      // Start polling for completion
-      let attempts = 0;
-      const maxAttempts = 60; // 5 minutes max (every 5 seconds)
+      // Use SSE for real-time status updates (much more efficient than polling)
+      const backendUrl = api.getBackendUrl();
+      const eventSource = new EventSource(`${backendUrl}/auth/telegram/stream/${response.data.code}`);
       
+      // Also trigger polling in background (in case SSE doesn't work through proxies)
       const pollInterval = setInterval(async () => {
-        attempts++;
-        
-        // Trigger backend to poll Telegram updates
         try {
-          await fetch('http://localhost:3001/auth/telegram/poll-updates', {
-            method: 'POST'
-          });
+          await api.post('/auth/telegram/poll-updates');
         } catch (e) {
           // Ignore poll errors
         }
+      }, 5000);
 
-        // Check if integration was saved
-        // Reload integrations to check status
-        const statusResponse = await fetch(`http://localhost:3001/auth/telegram/verify/${data.data.code}`);
-        const statusData = await statusResponse.json();
-
-        if (statusData.data?.status === 'completed' || isConnected('telegram')) {
+      // SSE message handler - instant notification when verified
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.status === 'completed') {
+          eventSource.close();
           clearInterval(pollInterval);
           setTelegramConnecting(false);
           setShowTelegramSetup(false);
           success('Telegram connected successfully!');
-          // Refresh integrations list
           window.location.reload();
-          return;
-        }
-
-        if (attempts >= maxAttempts) {
+        } else if (data.status === 'expired' || data.status === 'not_found') {
+          eventSource.close();
           clearInterval(pollInterval);
           setTelegramConnecting(false);
-          showError('Connection timed out. Please try again.');
+          showError('Connection expired. Please try again.');
         }
-      }, 5000);
+      };
+
+      eventSource.onerror = () => {
+        // SSE connection failed, continue with polling fallback
+        console.log('[Telegram] SSE connection failed, using polling fallback');
+        eventSource.close();
+      };
+
+      // Timeout after 10 minutes
+      setTimeout(() => {
+        eventSource.close();
+        clearInterval(pollInterval);
+        setTelegramConnecting(false);
+        showError('Connection timed out. Please try again.');
+      }, 10 * 60 * 1000);
 
     } catch (err: any) {
       console.error('[Telegram] Connection error:', err);
@@ -352,6 +355,9 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
   const spotifyUsername = getSpotifyIntegration?.provider_username || spotifyProfile?.display_name;
   const spotifyAvatar = getSpotifyIntegration?.provider_avatar_url || spotifyProfile?.images?.[0]?.url;
 
+  // Check if YouTube has personal OAuth connected
+  const youtubeIsConnected = isConnected('youtube');
+
   // Music Platforms
   const musicPlatforms = [
     {
@@ -368,11 +374,12 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
     {
       provider: 'youtube',
       name: 'YouTube',
-      description: 'Access your playlists',
+      description: youtubeIsConnected ? 'Personal playlists & history' : 'System Search & Downloads Active (Connect for Playlists)',
       color: '#FF0000',
       icon: ICONS.Play,
-      isConnected: isConnected('youtube'),
-      username: getYoutubeIntegration?.provider_username,
+      isConnected: true, // Always show as connected (System or User)
+      isSystemMode: !youtubeIsConnected, // Show as system mode when no personal account
+      username: getYoutubeIntegration?.provider_username || 'System Integration',
       avatarUrl: getYoutubeIntegration?.provider_avatar_url,
     },
   ];

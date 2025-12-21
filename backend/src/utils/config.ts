@@ -46,6 +46,9 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  
+  // Security
+  TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -117,6 +120,11 @@ export const config = {
     anonKey: parsed.data.SUPABASE_ANON_KEY || '',
     serviceRoleKey: parsed.data.SUPABASE_SERVICE_ROLE_KEY || '',
     isConfigured: !!(parsed.data.SUPABASE_URL && parsed.data.SUPABASE_ANON_KEY),
+  },
+  
+  security: {
+    encryptionKey: parsed.data.TOKEN_ENCRYPTION_KEY || '',
+    isEncryptionConfigured: !!(parsed.data.TOKEN_ENCRYPTION_KEY && parsed.data.TOKEN_ENCRYPTION_KEY.length >= 32),
   },
 };
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ICONS } from '../constants';
 import { generatePlaylistFromContext } from '../services/geminiService';
 import { Song, MusicProvider, SpotifyProfile, ApiKey, ApiScope, Webhook, WebhookEvent } from '../types';
@@ -9,12 +9,22 @@ import * as devApi from '../services/developerApiService';
 import * as webhooks from '../services/webhookService';
 import * as extensionBridge from '../services/extensionBridge';
 
-// Phase 5 Components
-import ReleaseRadar from './ReleaseRadar';
-import ConcertFinder from './ConcertFinder';
-import ListeningReport from './ListeningReport';
-import SmartPlaylistEditor from './SmartPlaylistEditor';
-import IntegrationsPanel from './IntegrationsPanel';
+// Phase 5 Components - Lazy loaded for performance
+const ReleaseRadar = lazy(() => import('./ReleaseRadar'));
+const ConcertFinder = lazy(() => import('./ConcertFinder'));
+const ListeningReport = lazy(() => import('./ListeningReport'));
+const SmartPlaylistEditor = lazy(() => import('./SmartPlaylistEditor'));
+const IntegrationsPanel = lazy(() => import('./IntegrationsPanel'));
+
+// Loading fallback component
+const TabLoadingFallback = () => (
+  <div className="flex items-center justify-center py-20">
+    <div className="flex flex-col items-center gap-4">
+      <ICONS.Loader size={32} className="animate-spin text-gray-400" />
+      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">Loading module...</p>
+    </div>
+  </div>
+);
 
 interface ExtensionsProps {
   onPlaySong: (song: Song, queue?: Song[]) => void;
@@ -337,12 +347,14 @@ const Extensions: React.FC<ExtensionsProps> = ({
                 <h3 className="text-lg font-bold font-mono uppercase mb-4 flex items-center gap-2">
                   <ICONS.Link size={20} /> Connected Accounts
                 </h3>
-                <IntegrationsPanel
-                  onSpotifyConnect={handleSpotifyConnect}
-                  spotifyConnected={!!spotifyToken}
-                  spotifyProfile={spotifyProfile}
-                  onSpotifyDisconnect={onDisconnectSpotify}
-                />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <IntegrationsPanel
+                    onSpotifyConnect={handleSpotifyConnect}
+                    spotifyConnected={!!spotifyToken}
+                    spotifyProfile={spotifyProfile}
+                    onSpotifyDisconnect={onDisconnectSpotify}
+                  />
+                </Suspense>
               </div>
           </div>
       )}
@@ -380,21 +392,27 @@ const Extensions: React.FC<ExtensionsProps> = ({
                 ))}
               </div>
             </div>
-            <ListeningReport period={reportPeriod} />
+            <Suspense fallback={<TabLoadingFallback />}>
+              <ListeningReport period={reportPeriod} />
+            </Suspense>
           </div>
 
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Release Radar */}
-            <ReleaseRadar 
-              favoriteArtists={[]} 
-              onPlaySong={onPlaySong} 
-            />
+            <Suspense fallback={<TabLoadingFallback />}>
+              <ReleaseRadar 
+                favoriteArtists={[]} 
+                onPlaySong={onPlaySong} 
+              />
+            </Suspense>
 
             {/* Concert Finder */}
-            <ConcertFinder 
-              favoriteArtists={[]} 
-            />
+            <Suspense fallback={<TabLoadingFallback />}>
+              <ConcertFinder 
+                favoriteArtists={[]} 
+              />
+            </Suspense>
           </div>
         </div>
       )}

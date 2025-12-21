@@ -24,8 +24,8 @@ const STORAGE_KEYS = {
   EXPIRES_AT: 'spotify_token_expiry',
 } as const;
 
-// Backend API URL for token refresh
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+// Use shared API client for backend URL
+import { getBackendUrl } from '../utils/apiClient';
 
 // Refresh margin - refresh 5 minutes before expiry
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -191,7 +191,7 @@ class TokenManagerClass {
     try {
       console.log(`[TokenManager] Refreshing token (attempt ${attempt}/${MAX_RETRY_ATTEMPTS})`);
       
-      const response = await fetch(`${BACKEND_URL}/auth/spotify/refresh`, {
+      const response = await fetch(`${getBackendUrl()}/auth/spotify/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),

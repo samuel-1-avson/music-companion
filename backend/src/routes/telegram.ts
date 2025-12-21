@@ -7,8 +7,13 @@ import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../utils/config.js';
+import { EventEmitter } from 'events';
 
 const router = Router();
+
+// Event emitter for real-time notifications
+const telegramEvents = new EventEmitter();
+telegramEvents.setMaxListeners(100); // Allow many concurrent SSE connections
 
 // In-memory storage for pending verifications
 // In production, use Redis or database
@@ -19,12 +24,17 @@ const pendingVerifications = new Map<string, {
   expiresAt: Date;
 }>();
 
+// Track SSE clients by verification code
+const sseClients = new Map<string, Response[]>();
+
 // Cleanup expired verifications every 5 minutes
 setInterval(() => {
   const now = new Date();
   for (const [code, verification] of pendingVerifications.entries()) {
     if (now > verification.expiresAt) {
       pendingVerifications.delete(code);
+      // Clean up any SSE clients for this code
+      sseClients.delete(code);
     }
   }
 }, 5 * 60 * 1000);
@@ -120,6 +130,7 @@ router.post('/generate-code', async (req: Request, res: Response) => {
           deepLink,
           botUsername,
           expiresIn: 600, // 10 minutes in seconds
+          sseUrl: `/auth/telegram/stream/${code}`, // SSE endpoint for real-time updates
         }
       });
     } else {
@@ -132,7 +143,89 @@ router.post('/generate-code', async (req: Request, res: Response) => {
 });
 
 /**
- * Check verification status (polling endpoint)
+ * Server-Sent Events endpoint for real-time verification status
+ * GET /auth/telegram/stream/:code
+ * 
+ * This replaces polling with real-time push notifications
+ */
+router.get('/stream/:code', (req: Request, res: Response) => {
+  const { code } = req.params;
+  const upperCode = code.toUpperCase();
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+  // Send initial status
+  const verification = pendingVerifications.get(upperCode);
+  if (!verification) {
+    res.write(`data: ${JSON.stringify({ status: 'not_found' })}\n\n`);
+    res.end();
+    return;
+  }
+
+  if (new Date() > verification.expiresAt) {
+    res.write(`data: ${JSON.stringify({ status: 'expired' })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // Send pending status
+  res.write(`data: ${JSON.stringify({ status: 'pending' })}\n\n`);
+
+  // Track this client
+  if (!sseClients.has(upperCode)) {
+    sseClients.set(upperCode, []);
+  }
+  sseClients.get(upperCode)!.push(res);
+
+  // Send keepalive every 30 seconds
+  const keepalive = setInterval(() => {
+    res.write(': keepalive\n\n');
+  }, 30000);
+
+  // Cleanup on close
+  req.on('close', () => {
+    clearInterval(keepalive);
+    const clients = sseClients.get(upperCode);
+    if (clients) {
+      const index = clients.indexOf(res);
+      if (index > -1) {
+        clients.splice(index, 1);
+      }
+      if (clients.length === 0) {
+        sseClients.delete(upperCode);
+      }
+    }
+  });
+});
+
+/**
+ * Helper function to notify SSE clients of verification completion
+ */
+function notifySSEClients(code: string, status: 'completed' | 'expired', data?: any): void {
+  const upperCode = code.toUpperCase();
+  const clients = sseClients.get(upperCode);
+  
+  if (clients && clients.length > 0) {
+    const message = JSON.stringify({ status, ...data });
+    clients.forEach(client => {
+      try {
+        client.write(`data: ${message}\n\n`);
+        client.end();
+      } catch (e) {
+        // Client already closed
+      }
+    });
+    sseClients.delete(upperCode);
+    console.log(`[Telegram SSE] Notified ${clients.length} clients about ${status} for code ${code}`);
+  }
+}
+
+/**
+ * Check verification status (polling endpoint - kept for fallback)
  * GET /auth/telegram/status/:code
  */
 router.get('/status/:code', async (req: Request, res: Response) => {
@@ -266,6 +359,9 @@ router.post('/poll-updates', async (req: Request, res: Response) => {
               
               // Remove the verification (it's been used)
               pendingVerifications.delete(code);
+              
+              // Notify SSE clients of successful connection
+              notifySSEClients(code, 'completed', { chatId, username });
               
               console.log(`[Telegram] Linked user ${verification.userId} with chat ${chatId}`);
 
