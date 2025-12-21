@@ -84,6 +84,12 @@ export function useIntegrations() {
         console.warn('[Integrations] Custom table error:', fetchError.message);
       } else if (customIntegrations) {
         for (const item of customIntegrations) {
+          // Skip integrations that are pending verification (email_verified is false or null)
+          if (item.email_verified === false || (item.metadata?.pending_verification === true)) {
+            console.log(`[Integrations] Skipping ${item.provider} - pending verification`);
+            continue;
+          }
+          
           // Only add if not already in OAuth identities
           if (!allIntegrations.find(i => i.provider === item.provider)) {
             allIntegrations.push({

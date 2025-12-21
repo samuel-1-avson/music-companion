@@ -110,6 +110,23 @@ export function useSpotifyData() {
     }
   }, [spotifyTokens?.expiresAt]);
 
+  // Clear all data when tokens are removed (disconnect)
+  useEffect(() => {
+    if (!spotifyTokens) {
+      console.log('[SpotifyData] Tokens cleared, resetting all data');
+      setState({
+        recentlyPlayed: [],
+        topTracks: [],
+        topArtists: [],
+        playlists: [],
+        currentlyPlaying: null,
+        isLoading: false,
+        error: null,
+        tokenExpiresAt: null,
+      });
+    }
+  }, [spotifyTokens]);
+
 
   /**
    * Make authenticated Spotify API call
