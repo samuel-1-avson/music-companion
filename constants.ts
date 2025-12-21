@@ -80,7 +80,8 @@ import {
   FastForward,
   Rewind,
   ChevronDown,
-  ChevronLeft
+  ChevronLeft,
+  AlertTriangle
 } from 'lucide-react';
 
 export const ICONS = {
@@ -167,7 +168,9 @@ export const ICONS = {
   FastForward,
   Rewind,
   ChevronDown,
-  ChevronLeft
+  ChevronLeft,
+  AlertTriangle,
+  X
 };
 
 export const MOCK_SONGS: any[] = [
