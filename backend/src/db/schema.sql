@@ -61,7 +61,9 @@ ALTER TABLE downloads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for all users" ON user_integrations FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON user_integrations FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable update for all users" ON user_integrations FOR UPDATE USING (true);
+CREATE POLICY "Enable delete for all users" ON user_integrations FOR DELETE USING (true);
 
 CREATE POLICY "Enable read access for all users" ON downloads FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON downloads FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable update for all users" ON downloads FOR UPDATE USING (true);
+CREATE POLICY "Enable delete for all users" ON downloads FOR DELETE USING (true);
