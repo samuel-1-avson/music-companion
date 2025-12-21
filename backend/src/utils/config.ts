@@ -11,6 +11,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   FRONTEND_URLS: z.string().optional(), // Comma-separated list of additional frontend URLs
+  BACKEND_URL: z.string().optional(), // Backend public URL for OAuth callbacks
   
   // Spotify
   SPOTIFY_CLIENT_ID: z.string().optional(),
@@ -69,7 +70,7 @@ export const config = {
     'http://localhost:3000', // Another common port
     ...(parsed.data.FRONTEND_URLS ? parsed.data.FRONTEND_URLS.split(',').map(u => u.trim()) : [])
   ].filter(Boolean),
-  backendUrl: `http://localhost:${parsed.data.PORT}`,
+  backendUrl: parsed.data.BACKEND_URL || `http://localhost:${parsed.data.PORT}`,
   isDev: parsed.data.NODE_ENV === 'development',
   isProd: parsed.data.NODE_ENV === 'production',
   
