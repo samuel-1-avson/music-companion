@@ -235,6 +235,8 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
     if (result) {
       setShowVerificationModal(false);
       success(`${verificationProvider.charAt(0).toUpperCase() + verificationProvider.slice(1)} verified and connected!`);
+      // Reload page to ensure fresh state with verified integration
+      setTimeout(() => window.location.reload(), 500);
     }
     return result;
   };
