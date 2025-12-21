@@ -182,6 +182,9 @@ export function useIntegrations() {
     try {
       console.log(`[Integrations] Disconnecting ${provider}...`);
       
+      // OPTIMISTIC UPDATE: Remove from local state immediately for instant UI feedback
+      setIntegrations(prev => prev.filter(i => i.provider !== provider));
+
       // Call backend disconnect endpoint to remove from user_integrations table
       const response = await api.post(`/auth/disconnect/${provider}`, {
         user_id: user.id,
@@ -189,6 +192,9 @@ export function useIntegrations() {
       
       if (!response.success) {
         console.error(`[Integrations] Disconnect ${provider} failed:`, response.error);
+        // Revert state if failed (optional, but safer)
+        await loadIntegrations(); 
+        return false;
       }
 
       // For Spotify: clear TokenManager and localStorage tokens
@@ -204,7 +210,6 @@ export function useIntegrations() {
       }
 
       // For Discord/Twitch: also try to unlink from Supabase auth (if they were linked)
-      // Note: Spotify is NOT included here since we no longer use Supabase identities for it
       if (['discord', 'twitch'].includes(provider)) {
         try {
           const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -225,17 +230,16 @@ export function useIntegrations() {
         }
       }
 
-      // Remove from local state immediately for responsive UI
-      setIntegrations(prev => prev.filter(i => i.provider !== provider));
       console.log(`[Integrations] ${provider} disconnected successfully`);
       
-      // Reload integrations to sync state
+      // Confirm with fresh data
       await loadIntegrations();
       
       return true;
     } catch (err: any) {
       console.error(`[Integrations] Disconnect ${provider} error:`, err);
       setError(err.message);
+      await loadIntegrations(); // Revert on error
       return false;
     }
   }, [user, loadIntegrations]);
