@@ -13,13 +13,13 @@ export interface MusicResult {
   videoId?: string; // For YouTube
 }
 
-// List of public Invidious instances to rotate through
+// List of public Invidious instances to rotate through - Updated Dec 2024
 const INVIDIOUS_INSTANCES = [
+  'https://inv.nadeko.net',
+  'https://invidious.nerdvpn.de',
   'https://inv.tux.pizza',
   'https://invidious.jing.rocks',
-  'https://vid.puffyan.us',
-  'https://invidious.nerdvpn.de',
-  'https://inv.zzls.xyz'
+  'https://yt.artemislena.eu'
 ];
 
 const getRandomInstance = () => {

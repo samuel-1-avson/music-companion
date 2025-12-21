@@ -103,8 +103,11 @@ router.get('/search', async (req, res) => {
 // --- YOUTUBE ---
 
 async function searchYouTube(query: string, limit: number): Promise<Song[]> {
+  console.log(`[YouTube Search] Starting search for: "${query}" (limit: ${limit})`);
+  
   // Use official YouTube Data API if configured (recommended)
-  if (config.youtube.isConfigured) {
+  if (config.youtube.apiKey) {
+    console.log('[YouTube Search] Trying YouTube Data API...');
     try {
       const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
         params: {
@@ -119,6 +122,7 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
       });
       
       if (response.data?.items?.length > 0) {
+        console.log(`[YouTube Search] YouTube Data API SUCCESS: ${response.data.items.length} results`);
         return response.data.items.map((item: any) => ({
           id: `yt-${item.id.videoId}`,
           title: item.snippet.title,
@@ -131,25 +135,31 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
           externalUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`
         }));
       }
+      console.log('[YouTube Search] YouTube Data API returned 0 results');
     } catch (e: any) {
-      console.error('YouTube Data API error:', e.response?.data?.error?.message || e.message);
+      console.error('[YouTube Search] YouTube Data API FAILED:', e.response?.data?.error?.message || e.message);
       // Fall through to try other methods
     }
+  } else {
+    console.log('[YouTube Search] YouTube Data API not configured (no YOUTUBE_API_KEY)');
   }
   
-  // Try Piped API (free, no key needed)
+  // Try Piped API (free, no key needed) - Updated Dec 2024
   const pipedInstances = [
     'https://pipedapi.kavin.rocks',
+    'https://pipedapi.r4fo.com',
     'https://pipedapi.adminforge.de',
-    'https://api.piped.projectsegfau.lt'
+    'https://api.piped.yt'
   ];
   
   for (const instance of pipedInstances) {
+    console.log(`[YouTube Search] Trying Piped: ${instance}`);
     try {
       const url = `${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`;
       const response = await axios.get(url, { timeout: 8000 });
       
       if (response.data?.items?.length > 0) {
+        console.log(`[YouTube Search] Piped SUCCESS (${instance}): ${response.data.items.length} results`);
         return response.data.items.slice(0, limit).map((item: any) => {
           const videoId = item.url?.replace('/watch?v=', '') || '';
           return {
@@ -165,40 +175,50 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
           };
         });
       }
-    } catch (e) {
+      console.log(`[YouTube Search] Piped (${instance}) returned 0 results`);
+    } catch (e: any) {
+      console.log(`[YouTube Search] Piped FAILED (${instance}): ${e.message}`);
       continue;
     }
   }
   
-  // Fallback to Invidious instances
+  // Fallback to Invidious instances - Updated Dec 2024
   const invidInstances = [
-    'https://invidious.fdn.fr',
     'https://inv.nadeko.net',
-    'https://vid.puffyan.us',
-    'https://yewtu.be'
+    'https://invidious.nerdvpn.de',
+    'https://inv.tux.pizza',
+    'https://invidious.jing.rocks',
+    'https://yt.artemislena.eu'
   ];
 
   for (const instance of invidInstances) {
+    console.log(`[YouTube Search] Trying Invidious: ${instance}`);
     try {
       const url = `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`;
       const response = await axios.get(url, { timeout: 5000 });
       
-      return response.data.slice(0, limit).map((item: any) => ({
-        id: `yt-${item.videoId}`,
-        title: item.title,
-        artist: item.author || 'Unknown Artist',
-        album: 'YouTube',
-        duration: formatDuration(item.lengthSeconds),
-        coverUrl: item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
-        mood: 'YouTube',
-        spotifyUri: `yt:${item.videoId}`,
-        externalUrl: `https://www.youtube.com/watch?v=${item.videoId}`
-      }));
-    } catch (e) {
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        console.log(`[YouTube Search] Invidious SUCCESS (${instance}): ${response.data.length} results`);
+        return response.data.slice(0, limit).map((item: any) => ({
+          id: `yt-${item.videoId}`,
+          title: item.title,
+          artist: item.author || 'Unknown Artist',
+          album: 'YouTube',
+          duration: formatDuration(item.lengthSeconds),
+          coverUrl: item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
+          mood: 'YouTube',
+          spotifyUri: `yt:${item.videoId}`,
+          externalUrl: `https://www.youtube.com/watch?v=${item.videoId}`
+        }));
+      }
+      console.log(`[YouTube Search] Invidious (${instance}) returned 0 results`);
+    } catch (e: any) {
+      console.log(`[YouTube Search] Invidious FAILED (${instance}): ${e.message}`);
       continue;
     }
   }
 
+  console.log('[YouTube Search] ALL YouTube sources failed - no results');
   return [];
 }
 
@@ -209,10 +229,12 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
 router.get('/youtube/stream/:videoId', async (req, res) => {
   const { videoId } = req.params;
 
+  // Updated Dec 2024 with reliable instances
   const instances = [
-    'https://vid.puffyan.us',
-    'https://invidious.snopyta.org',
-    'https://yewtu.be'
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://inv.tux.pizza',
+    'https://invidious.jing.rocks'
   ];
 
   for (const instance of instances) {
@@ -284,7 +306,7 @@ router.get('/spotify/*', async (req, res) => {
     return res.status(401).json({ success: false, error: 'Spotify token required' });
   }
 
-  const path = req.params[0];
+  const path = (req.params as Record<string, string>)[0];
   try {
     const response = await axios.get(`https://api.spotify.com/v1/${path}`, {
       headers: { Authorization: `Bearer ${token}` },

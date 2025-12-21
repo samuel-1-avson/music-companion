@@ -3,8 +3,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install build tools for native modules
-RUN apk add --no-cache python3 make g++ sqlite
+# Install build tools for native modules + Python/yt-dlp for downloads
+RUN apk add --no-cache python3 py3-pip make g++ sqlite ffmpeg \
+    && pip3 install --break-system-packages yt-dlp
 
 # Copy package files
 COPY package*.json ./

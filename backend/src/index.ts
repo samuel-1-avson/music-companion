@@ -106,7 +106,7 @@ app.use('/api/music', searchRateLimit, musicRoutes);
 app.use('/api/ai', aiRateLimit, aiRoutes);
 app.use('/api/dev', generalRateLimit, developerRoutes);
 app.use('/api/webhooks', generalRateLimit, webhookRoutes);
-app.use('/api/downloads', downloadRateLimit, downloadsRoutes);
+app.use('/api/downloads', generalRateLimit, downloadsRoutes);
 app.use('/auth/telegram', authRateLimit, telegramRoutes);
 
 // --- ERROR HANDLING ---

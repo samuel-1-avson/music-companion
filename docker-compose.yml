@@ -10,6 +10,7 @@ services:
         - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
         - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
         - VITE_API_URL=http://localhost:3001
+        - VITE_BACKEND_URL=http://localhost:3001
         - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
         - VITE_YOUTUBE_API_KEY=${VITE_YOUTUBE_API_KEY}
     container_name: music-companion-frontend
@@ -65,6 +66,7 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
       - backend-data:/app/data
+      - backend-downloads:/app/downloads
     networks:
       - music-companion-network
     restart: unless-stopped
@@ -93,4 +95,5 @@ networks:
 
 volumes:
   backend-data:
+  backend-downloads:
   redis-data:

@@ -120,6 +120,26 @@ router.get('/check/:videoId', async (req, res) => {
 });
 
 /**
+ * Get storage stats
+ * GET /api/downloads/stats
+ * NOTE: This must be before /:id to prevent "stats" being matched as an ID
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const stats = await downloadService.getStorageStats();
+    res.json({
+      success: true,
+      data: {
+        ...stats,
+        totalSizeMB: (stats.totalSize / 1024 / 1024).toFixed(2)
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * Get download status
  * GET /api/downloads/:id
  */
@@ -246,25 +266,6 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Download not found' });
     }
     res.json({ success: true, data: { deleted: true } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * Get storage stats
- * GET /api/downloads/stats
- */
-router.get('/stats', async (req, res) => {
-  try {
-    const stats = await downloadService.getStorageStats();
-    res.json({
-      success: true,
-      data: {
-        ...stats,
-        totalSizeMB: (stats.totalSize / 1024 / 1024).toFixed(2)
-      }
-    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

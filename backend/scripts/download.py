@@ -31,7 +31,7 @@ def download_audio(video_id: str, output_dir: str) -> dict:
     
     ydl_opts = {
         # Download best audio format directly (no FFmpeg conversion needed)
-        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=opus]/bestaudio/best',
         'outtmpl': output_template,
         # Completely suppress all console output
         'quiet': True,
@@ -44,6 +44,22 @@ def download_audio(video_id: str, output_dir: str) -> dict:
         # Rate limiting (polite to YouTube)
         'sleep_interval': 1,
         'sleep_interval_requests': 1,
+        # Anti-bot measures
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        # Retry options
+        'retries': 3,
+        'fragment_retries': 3,
+        # User agent to avoid blocks
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        # YouTube specific options to bypass age-gate and other restrictions
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        }
     }
     
     try:
@@ -56,24 +72,28 @@ def download_audio(video_id: str, output_dir: str) -> dict:
             thumbnail_url = info.get('thumbnail', '')
             duration = info.get('duration', 0)
             
-            # Find the downloaded file
-            expected_path = os.path.join(output_dir, f"{unique_base}.mp3")
+            # Find the downloaded file - yt-dlp downloads in native format (m4a, webm, opus)
+            # NOT mp3 since we're not using FFmpeg conversion
             final_path = None
+            pattern = os.path.join(output_dir, f"{unique_base}.*")
+            matches = glob.glob(pattern)
             
-            if os.path.exists(expected_path):
-                final_path = expected_path
-            else:
-                # Fallback: search for file
-                pattern = os.path.join(output_dir, f"{unique_base}*")
-                matches = glob.glob(pattern)
-                if matches:
-                    final_path = matches[0]
+            # Filter out any partial/temp files - include .mp4 as yt-dlp may use it
+            audio_extensions = ['.m4a', '.webm', '.opus', '.mp3', '.ogg', '.aac', '.mp4']
+            for match in matches:
+                ext = os.path.splitext(match)[1].lower()
+                if ext in audio_extensions and os.path.exists(match):
+                    final_path = match
+                    break
             
             if not final_path or not os.path.exists(final_path):
+                # Debug: list what files exist
+                all_matches = glob.glob(pattern)
                 return {
                     'success': False,
-                    'error': 'Download completed but file not found'
+                    'error': f'Download completed but file not found. Pattern: {pattern}, Matches: {all_matches}'
                 }
+
             
             # Check file size (50MB limit)
             file_size = os.path.getsize(final_path)

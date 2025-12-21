@@ -7,9 +7,10 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
 
-// Supabase configuration
+// Supabase configuration - Use service role key to bypass RLS for backend operations
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
+// Service role key bypasses Row Level Security - required for backend operations
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 // Create Supabase client
 let supabase: SupabaseClient | null = null;
