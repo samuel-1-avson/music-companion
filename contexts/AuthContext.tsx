@@ -52,6 +52,7 @@ interface AuthContextType extends AuthState {
   // Spotify helpers
   hasSpotifyAccess: boolean;
   refreshSpotifyToken: () => Promise<SpotifyTokens | null>;
+  disconnectSpotify: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -410,6 +411,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return null;
     }
   }, []);
+  
+  // Disconnect Spotify helper (clears state and storage)
+  const disconnectSpotify = useCallback(() => {
+    tokenManager.clear();
+    localStorage.removeItem('spotify_tokens'); // Redundant if tokenManager does it, but safety first
+    setState(prev => ({ ...prev, spotifyTokens: null }));
+    console.log('[Auth] Spotify disconnected and state cleared');
+  }, []);
 
   // Check if we have valid Spotify access
   const hasSpotifyAccess = !!state.spotifyTokens?.accessToken;
@@ -425,7 +434,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       signInWithSpotify,
       resetPassword,
       hasSpotifyAccess,
+
       refreshSpotifyToken,
+      disconnectSpotify,
     }}>
       {children}
     </AuthContext.Provider>

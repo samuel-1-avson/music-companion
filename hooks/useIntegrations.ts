@@ -22,7 +22,7 @@ export interface Integration {
 }
 
 export function useIntegrations() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, disconnectSpotify } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -197,15 +197,12 @@ export function useIntegrations() {
         return false;
       }
 
-      // For Spotify: clear TokenManager and localStorage tokens
+      // For Spotify: Call AuthContext disconnect helper to clear all state
       if (provider === 'spotify') {
         try {
-          const { tokenManager } = await import('../services/TokenManager');
-          tokenManager.clear();
-          console.log('[Integrations] Cleared Spotify tokens from TokenManager');
-          localStorage.removeItem('spotify_tokens');
+          disconnectSpotify();
         } catch (e) {
-          console.warn('[Integrations] Could not clear TokenManager:', e);
+          console.warn('[Integrations] Could not disconnect spotify auth:', e);
         }
       }
 
