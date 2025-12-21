@@ -138,10 +138,10 @@ export function rateLimit(options: RateLimitOptions) {
  * Pre-configured rate limiters for common use cases
  */
 
-/** Auth endpoints - strict limit (10 per minute) */
+/** Auth endpoints - reasonable limit (25 per minute) */
 export const authRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 10,
+  max: 25,
   message: 'Too many authentication attempts. Please wait a minute.',
 });
 
