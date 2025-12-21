@@ -389,11 +389,12 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
     {
       provider: 'lastfm',
       name: 'Last.fm',
-      description: 'Scrobble & track history',
+      description: isConnected('lastfm') ? 'Scrobble & track history' : 'Music Discovery & Similar Artists (Built-in)',
       color: '#d51007',
       icon: ICONS.Radio,
-      isConnected: isConnected('lastfm'),
-      username: getLastfmIntegration?.provider_username,
+      isConnected: true, // Always show as connected (System or User)
+      isSystemMode: !isConnected('lastfm'), // Show as system mode when no personal account
+      username: getLastfmIntegration?.provider_username || 'System Integration',
     },
     {
       provider: 'apple',
