@@ -67,10 +67,10 @@ const EmailVerificationModal: React.FC<EmailVerificationModalProps> = ({
         {/* Content */}
         <div className="p-6 space-y-4">
           <div className="bg-yellow-50 border-2 border-yellow-400 p-4">
-            <p className="text-sm font-mono">
+            <p className="text-sm font-mono text-black">
               <strong>Different email detected!</strong>
             </p>
-            <div className="mt-2 space-y-1 text-xs font-mono">
+            <div className="mt-2 space-y-1 text-xs font-mono text-yellow-900">
               <p>Your account: <strong>{userEmail}</strong></p>
               <p>{providerName} account: <strong>{providerEmail}</strong></p>
             </div>

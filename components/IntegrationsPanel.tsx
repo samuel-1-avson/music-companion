@@ -223,9 +223,14 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
       showError(`Connection failed: ${errorParam}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [success, showError]);
+    // Only run on mount to prevent re-triggering
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleVerify = async (code: string): Promise<boolean> => {
+    // Clean URL again just in case
+    window.history.replaceState({}, '', window.location.pathname);
+    
     const result = await verifyIntegration(verificationProvider, code);
     if (result) {
       setShowVerificationModal(false);
