@@ -323,13 +323,19 @@ router.get('/spotify/token', async (req, res) => {
 
     const { data, error } = await supabase
       .from('user_integrations')
-      .select('access_token, token_expires_at, tokens_encrypted')
+      .select('access_token, token_expires_at, tokens_encrypted, email_verified, metadata')
       .eq('user_id', user_id)
       .eq('provider', 'spotify')
       .single();
 
     if (error || !data) {
       return res.status(404).json({ success: false, error: 'No Spotify integration found' });
+    }
+
+    // Don't return tokens if not verified
+    if (data.email_verified === false || data.metadata?.pending_verification === true) {
+      console.log('[Spotify Token] Integration pending verification, not returning token');
+      return res.status(403).json({ success: false, error: 'Integration pending verification' });
     }
 
     const accessToken = safeDecryptToken(data.access_token, data.tokens_encrypted);
