@@ -16,7 +16,7 @@ const envSchema = z.object({
   // Spotify
   SPOTIFY_CLIENT_ID: z.string().optional(),
   SPOTIFY_CLIENT_SECRET: z.string().optional(),
-  SPOTIFY_REDIRECT_URI: z.string().default('http://localhost:3001/auth/spotify/callback'),
+  SPOTIFY_REDIRECT_URI: z.string().optional(), // Optional - derived from BACKEND_URL if not set
   
   // Last.fm
   LASTFM_API_KEY: z.string().optional(),
@@ -77,7 +77,9 @@ export const config = {
   spotify: {
     clientId: parsed.data.SPOTIFY_CLIENT_ID || '',
     clientSecret: parsed.data.SPOTIFY_CLIENT_SECRET || '',
-    redirectUri: parsed.data.SPOTIFY_REDIRECT_URI,
+    // Use SPOTIFY_REDIRECT_URI if set, otherwise derive from BACKEND_URL
+    redirectUri: parsed.data.SPOTIFY_REDIRECT_URI || 
+      `${parsed.data.BACKEND_URL || `http://localhost:${parsed.data.PORT}`}/auth/spotify/callback`,
     isConfigured: !!(parsed.data.SPOTIFY_CLIENT_ID && parsed.data.SPOTIFY_CLIENT_SECRET),
   },
   
