@@ -7,15 +7,16 @@ WORKDIR /app
 RUN apk add --no-cache python3 py3-pip make g++ sqlite ffmpeg \
     && pip3 install --break-system-packages yt-dlp
 
-# Copy package files
-COPY package*.json ./
+# Copy package files from backend directory (Railway builds from repo root)
+COPY backend/package*.json ./
 
 # Install all dependencies 
 # Use npm install (not ci) to allow building native modules
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy source code from backend directory
+COPY backend/src ./src
+COPY backend/tsconfig.json ./
 
 # Create data directory
 RUN mkdir -p /app/data
