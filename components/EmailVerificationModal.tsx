@@ -37,12 +37,15 @@ const EmailVerificationModal: React.FC<EmailVerificationModalProps> = ({
 
     try {
       const success = await onVerify(code);
-      if (!success) {
+      if (success) {
+        // Verification succeeded - reload page immediately to get fresh state
+        window.location.href = '/integrations';
+      } else {
         setError('Invalid or expired code. Please try again.');
+        setIsVerifying(false);
       }
     } catch (err) {
       setError('Verification failed. Please try again.');
-    } finally {
       setIsVerifying(false);
     }
   };
