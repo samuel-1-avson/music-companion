@@ -232,9 +232,8 @@ export function useIntegrations() {
 
       console.log(`[Integrations] ${provider} disconnected successfully`);
       
-      // Confirm with fresh data
-      await loadIntegrations();
-      
+      // Don't call loadIntegrations() here - the optimistic update already removed it
+      // Calling it again can cause a race condition where the record re-appears briefly
       return true;
     } catch (err: any) {
       console.error(`[Integrations] Disconnect ${provider} error:`, err);
