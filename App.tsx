@@ -43,7 +43,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 
 const App: React.FC = () => {
-  const { spotifyTokens } = useAuth();
+  const { spotifyTokens, profile, isAuthenticated } = useAuth();
   const [userName, setUserName] = useState('User');
   
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
@@ -140,10 +140,14 @@ const App: React.FC = () => {
       const savedCrossfade = localStorage.getItem('crossfade_duration');
       if (savedCrossfade !== null) setCrossfadeDuration(Number(savedCrossfade));
 
-      // Load Username
-      getSettingDB('user_name').then(name => {
-          if (name) setUserName(name);
-      });
+      // Load Username - prefer auth profile, fallback to localStorage
+      if (profile?.display_name) {
+        setUserName(profile.display_name);
+      } else {
+        getSettingDB('user_name').then(name => {
+            if (name) setUserName(name);
+        });
+      }
 
       // Initialize Developer API
 
@@ -181,6 +185,13 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Sync userName when auth profile changes
+  useEffect(() => {
+    if (profile?.display_name) {
+      setUserName(profile.display_name);
+    }
+  }, [profile]);
 
   // Favorites are now loaded by useFavorites hook automatically
 
