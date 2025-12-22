@@ -143,8 +143,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Initialize auth state
   useEffect(() => {
+    // Check if this is an OAuth callback (has access_token in URL hash)
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const isOAuthCallback = hashParams.has('access_token');
+    
+    if (isOAuthCallback) {
+      console.log('[Auth] Detected OAuth callback, waiting for session...');
+    }
+    
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log('[Auth] Initial session check:', session ? 'Found' : 'None');
+      
       if (session?.user) {
         const profile = await fetchProfile(session.user.id);
         const spotifyTokens = extractSpotifyTokens(session);
@@ -187,6 +197,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           spotifyTokens,
         });
+        
+        // Clean up URL hash after successful auth (remove tokens from URL)
+        if (isOAuthCallback) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       } else {
         setState(prev => ({ ...prev, isLoading: false }));
       }
@@ -194,7 +209,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State changed:', event);
+      console.log('[Auth] State changed:', event, session ? 'with session' : 'no session');
       
       if (session?.user) {
         const profile = await fetchProfile(session.user.id);
