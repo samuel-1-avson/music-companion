@@ -19,7 +19,10 @@ if (typeof window !== 'undefined') {
   }
   const params = new URLSearchParams(window.location.search);
   if (params.has('code')) {
-    console.log('[Supabase] OAuth code detected in URL query');
+    console.log('[Supabase] OAuth code detected in URL query:', params.get('code')?.substring(0, 10) + '...');
+  }
+  if (params.has('error')) {
+    console.error('[Supabase] OAuth error in URL:', params.get('error'), params.get('error_description'));
   }
 }
 
@@ -30,7 +33,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'music-companion-auth',
+    debug: process.env.NODE_ENV === 'development',
   }
 });
+
+// Log when client is created
+console.log('[Supabase] Client initialized, URL:', supabaseUrl ? 'configured' : 'MISSING');
 
 export default supabase;

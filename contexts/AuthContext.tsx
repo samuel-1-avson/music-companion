@@ -143,50 +143,109 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Initialize auth state
   useEffect(() => {
+    let isMounted = true;
+    
+    // Helper to update state safely (accepts direct value or updater function)
+    const safeSetState = (update: AuthState | ((prev: AuthState) => AuthState)) => {
+      if (isMounted) {
+        setState(update);
+      }
+    };
+    
+    // Helper to handle successful session
+    const handleSession = async (session: Session, source: string) => {
+      console.log(`[Auth] Session established via ${source}:`, session.user.email);
+      const profile = await fetchProfile(session.user.id);
+      const spotifyTokens = extractSpotifyTokens(session);
+      
+      if (spotifyTokens) {
+        tokenManager.setTokens(spotifyTokens);
+      }
+      
+      integrationTokenManager.setUserId(session.user.id);
+      
+      safeSetState({
+        user: session.user,
+        profile,
+        session,
+        isAuthenticated: true,
+        isLoading: false,
+        spotifyTokens,
+      });
+      
+      // Check backend for Spotify tokens if not in session
+      if (!spotifyTokens) {
+        api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
+          .then(response => {
+            if (response.success && response.data && isMounted) {
+              console.log('[Auth] Spotify tokens retrieved from backend');
+              const backendTokens = {
+                accessToken: response.data.accessToken,
+                expiresAt: response.data.expiresAt
+              };
+              tokenManager.setTokens(backendTokens);
+              setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
+            }
+          })
+          .catch(() => {});
+      }
+    };
+    
     const initializeAuth = async () => {
-      // Check for PKCE code in query params (new flow)
+      // Check for PKCE code in query params (OAuth callback)
       const queryParams = new URLSearchParams(window.location.search);
       const code = queryParams.get('code');
+      const errorParam = queryParams.get('error');
+      const errorDescription = queryParams.get('error_description');
       
-      // Check for implicit tokens in hash (old flow)
+      // Check for implicit tokens in hash (legacy flow)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
       
-      // Handle PKCE code exchange
+      // Handle OAuth error in URL
+      if (errorParam) {
+        console.error('[Auth] OAuth error:', errorParam, errorDescription);
+        window.history.replaceState(null, '', window.location.pathname);
+        safeSetState(prev => ({ ...prev, isLoading: false }));
+        return;
+      }
+      
+      // Handle PKCE code exchange (Google OAuth callback)
       if (code) {
         console.log('[Auth] PKCE code detected, exchanging for session...');
         try {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           
           if (error) {
-            console.error('[Auth] PKCE code exchange failed:', error);
+            console.error('[Auth] PKCE code exchange failed:', error.message);
+            // Try to get existing session as fallback
+            const { data: { session: existingSession } } = await supabase.auth.getSession();
+            if (existingSession) {
+              console.log('[Auth] Found existing session after PKCE failure');
+              await handleSession(existingSession, 'existing-session-fallback');
+            } else {
+              safeSetState(prev => ({ ...prev, isLoading: false }));
+            }
           } else if (data.session) {
-            console.log('[Auth] Session obtained from PKCE code exchange');
-            const profile = await fetchProfile(data.session.user.id);
-            const spotifyTokens = extractSpotifyTokens(data.session);
-            
-            integrationTokenManager.setUserId(data.session.user.id);
-            
-            setState({
-              user: data.session.user,
-              profile,
-              session: data.session,
-              isAuthenticated: true,
-              isLoading: false,
-              spotifyTokens,
-            });
-            
-            // Clean up URL
-            window.history.replaceState(null, '', window.location.pathname);
-            return;
+            await handleSession(data.session, 'PKCE-exchange');
+          } else {
+            console.warn('[Auth] PKCE exchange returned no session');
+            safeSetState(prev => ({ ...prev, isLoading: false }));
           }
-        } catch (e) {
-          console.error('[Auth] PKCE exchange error:', e);
+          
+          // Clean up URL after processing
+          window.history.replaceState(null, '', window.location.pathname);
+          return;
+        } catch (e: any) {
+          console.error('[Auth] PKCE exchange exception:', e.message || e);
+          window.history.replaceState(null, '', window.location.pathname);
+          safeSetState(prev => ({ ...prev, isLoading: false }));
+          return;
         }
       }
       
-      // Handle implicit flow tokens in hash
+      // Handle implicit flow tokens in hash (legacy)
       if (accessToken) {
         console.log('[Auth] Implicit tokens detected in URL hash');
         try {
@@ -196,100 +255,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           });
           
           if (error) {
-            console.error('[Auth] Failed to set session from tokens:', error);
+            console.error('[Auth] Failed to set session from tokens:', error.message);
           } else if (data.session) {
-            console.log('[Auth] Session set from implicit tokens');
-            const profile = await fetchProfile(data.session.user.id);
-            const spotifyTokens = extractSpotifyTokens(data.session);
-            
-            integrationTokenManager.setUserId(data.session.user.id);
-            
-            setState({
-              user: data.session.user,
-              profile,
-              session: data.session,
-              isAuthenticated: true,
-              isLoading: false,
-              spotifyTokens,
-            });
-            
-            window.history.replaceState(null, '', window.location.pathname);
-            return;
+            await handleSession(data.session, 'implicit-tokens');
           }
-        } catch (e) {
-          console.error('[Auth] Error setting session:', e);
+          
+          window.history.replaceState(null, '', window.location.pathname);
+          return;
+        } catch (e: any) {
+          console.error('[Auth] Error setting session:', e.message || e);
+          window.history.replaceState(null, '', window.location.pathname);
         }
       }
       
-      // Normal session check
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('[Auth] Session check:', session ? `Found (${session.user.email})` : 'None');
-      
-      if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        const spotifyTokens = extractSpotifyTokens(session);
+      // Normal session check (page load without OAuth callback)
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (spotifyTokens) {
-          tokenManager.setTokens(spotifyTokens);
-          console.log('[Auth] Spotify connected via OAuth');
-        } else {
-          // Check backend for Spotify tokens
-          api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
-            .then(response => {
-              if (response.success && response.data) {
-                console.log('[Auth] Spotify tokens retrieved from backend');
-                const backendTokens = {
-                  accessToken: response.data.accessToken,
-                  expiresAt: response.data.expiresAt
-                };
-                tokenManager.setTokens(backendTokens);
-                setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
-              }
-            })
-            .catch(() => {});
+        if (error) {
+          console.error('[Auth] getSession error:', error.message);
+          safeSetState(prev => ({ ...prev, isLoading: false }));
+          return;
         }
         
-        integrationTokenManager.setUserId(session.user.id);
+        console.log('[Auth] Session check:', session ? `Found (${session.user.email})` : 'None');
         
-        setState({
-          user: session.user,
-          profile,
-          session,
-          isAuthenticated: true,
-          isLoading: false,
-          spotifyTokens,
-        });
-      } else {
-        setState(prev => ({ ...prev, isLoading: false }));
+        if (session?.user) {
+          await handleSession(session, 'stored-session');
+        } else {
+          safeSetState(prev => ({ ...prev, isLoading: false }));
+        }
+      } catch (e: any) {
+        console.error('[Auth] Session check error:', e.message || e);
+        safeSetState(prev => ({ ...prev, isLoading: false }));
       }
     };
     
-    initializeAuth();
-
-    // Listen for auth changes
+    // Set up auth state listener FIRST (before any async operations)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State changed:', event, session ? 'with session' : 'no session');
+      console.log('[Auth] State changed:', event, session ? `user: ${session.user.email}` : 'no session');
       
-      if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        const spotifyTokens = extractSpotifyTokens(session);
-        
-        // Sync to TokenManager for proactive refresh
-        if (spotifyTokens) {
-          tokenManager.setTokens(spotifyTokens);
-          console.log('[Auth] Spotify tokens updated, synced to TokenManager');
-        }
-        
-        setState({
-          user: session.user,
-          profile,
-          session,
-          isAuthenticated: true,
-          isLoading: false,
-          spotifyTokens,
-        });
-      } else {
-        setState({
+      if (!isMounted) return;
+      
+      if (event === 'SIGNED_IN' && session) {
+        await handleSession(session, `auth-state-change-${event}`);
+      } else if (event === 'SIGNED_OUT') {
+        safeSetState({
           user: null,
           profile: null,
           session: null,
@@ -297,10 +308,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           spotifyTokens: null,
         });
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        // Update session without full re-fetch
+        setState(prev => ({
+          ...prev,
+          session,
+          spotifyTokens: extractSpotifyTokens(session) || prev.spotifyTokens,
+        }));
       }
     });
-
+    
+    // Then initialize
+    initializeAuth();
+    
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
