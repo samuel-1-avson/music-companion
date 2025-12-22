@@ -1,4 +1,4 @@
-// Music Companion// Service Worker for Music Companion
+// Service Worker for Music Companion
 const CACHE_NAME = 'music-companion-v3';
 
 // Files to cache for offline use
