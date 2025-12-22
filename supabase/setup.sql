@@ -55,11 +55,35 @@ CREATE TABLE IF NOT EXISTS user_history (
   played_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Create indexes
+-- 5. Create user_integrations table (OAuth tokens for connected services)
+CREATE TABLE IF NOT EXISTS user_integrations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  provider TEXT NOT NULL, -- 'spotify', 'discord', 'youtube', 'lastfm', 'telegram'
+  access_token TEXT,
+  refresh_token TEXT,
+  token_expires_at TIMESTAMPTZ,
+  provider_user_id TEXT,
+  provider_username TEXT,
+  provider_avatar_url TEXT,
+  provider_email TEXT,
+  email_verified BOOLEAN DEFAULT FALSE,
+  verification_code TEXT,
+  verification_expires_at TIMESTAMPTZ,
+  tokens_encrypted BOOLEAN DEFAULT FALSE,
+  metadata JSONB DEFAULT '{}',
+  connected_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, provider)
+);
+-- 6. Create indexes
 CREATE INDEX IF NOT EXISTS idx_downloads_video_id ON downloads(video_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_history_user ON user_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_integrations_user ON user_integrations(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_integrations_provider ON user_integrations(provider);
 
 -- 6. Auto-create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -83,11 +107,12 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 7. Enable Row Level Security (RLS)
+-- 8. Enable Row Level Security (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE downloads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_integrations ENABLE ROW LEVEL SECURITY;
 
 -- 8. RLS Policies for profiles
 CREATE POLICY "Users can view own profile"
@@ -122,6 +147,15 @@ CREATE POLICY "Users can manage own favorites"
 -- 11. RLS Policies for history
 CREATE POLICY "Users can manage own history"
   ON user_history FOR ALL
+  USING (auth.uid() = user_id);
+
+-- 12. RLS Policies for user_integrations
+CREATE POLICY "Users can view own integrations"
+  ON user_integrations FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage own integrations"
+  ON user_integrations FOR ALL
   USING (auth.uid() = user_id);
 
 -- ============================================

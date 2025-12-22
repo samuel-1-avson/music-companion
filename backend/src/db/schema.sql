@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS user_integrations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT NOT NULL,
   provider TEXT NOT NULL,
-  access_token TEXT NOT NULL,
+  access_token TEXT, -- nullable for providers that don't use OAuth tokens (e.g., telegram with chat_id)
   refresh_token TEXT,
   token_expires_at TIMESTAMPTZ,
   provider_user_id TEXT,
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS user_integrations (
   verification_expires_at TIMESTAMPTZ,
   tokens_encrypted BOOLEAN DEFAULT FALSE,
   metadata JSONB DEFAULT '{}'::jsonb,
+  connected_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   

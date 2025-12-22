@@ -712,6 +712,239 @@ router.post('/youtube/refresh', async (req, res) => {
   }
 });
 
+// --- USER-ID BASED REFRESH ENDPOINTS ---
+// These endpoints accept user_id and fetch the refresh token from database
+
+/**
+ * Refresh Spotify token by user_id (fetches encrypted token from DB)
+ * POST /auth/spotify/refresh-by-user
+ */
+router.post('/spotify/refresh-by-user', async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
+
+    // Get encrypted refresh token from database
+    const { data, error } = await supabase
+      .from('user_integrations')
+      .select('refresh_token, tokens_encrypted')
+      .eq('user_id', user_id)
+      .eq('provider', 'spotify')
+      .single();
+
+    if (error || !data?.refresh_token) {
+      return res.status(404).json({ success: false, error: 'No refresh token found' });
+    }
+
+    const refresh_token = safeDecryptToken(data.refresh_token, data.tokens_encrypted);
+
+    // Call Spotify to refresh
+    const tokenResponse = await axios.post(
+      'https://accounts.spotify.com/api/token',
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${Buffer.from(`${config.spotify.clientId}:${config.spotify.clientSecret}`).toString('base64')}`
+        }
+      }
+    );
+
+    const { access_token, expires_in, refresh_token: new_refresh_token } = tokenResponse.data;
+    const token_expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+
+    // Update database with new tokens
+    await supabase
+      .from('user_integrations')
+      .update({
+        access_token: safeEncryptToken(access_token),
+        refresh_token: new_refresh_token ? safeEncryptToken(new_refresh_token) : data.refresh_token,
+        token_expires_at,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user_id)
+      .eq('provider', 'spotify');
+
+    console.log('[Spotify Refresh] Token refreshed for user:', user_id);
+
+    res.json({
+      success: true,
+      data: {
+        access_token,
+        expires_in
+      }
+    });
+  } catch (err: any) {
+    console.error('Spotify token refresh error:', err.response?.data || err.message);
+    res.status(401).json({ success: false, error: 'Failed to refresh token' });
+  }
+});
+
+/**
+ * Refresh Discord token by user_id (fetches encrypted token from DB)
+ * POST /auth/discord/refresh-by-user
+ */
+router.post('/discord/refresh-by-user', async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
+
+    const { data, error } = await supabase
+      .from('user_integrations')
+      .select('refresh_token, tokens_encrypted')
+      .eq('user_id', user_id)
+      .eq('provider', 'discord')
+      .single();
+
+    if (error || !data?.refresh_token) {
+      return res.status(404).json({ success: false, error: 'No refresh token found' });
+    }
+
+    const refresh_token = safeDecryptToken(data.refresh_token, data.tokens_encrypted);
+
+    const tokenResponse = await axios.post(
+      'https://discord.com/api/oauth2/token',
+      new URLSearchParams({
+        client_id: config.discord.clientId,
+        client_secret: config.discord.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }
+      }
+    );
+
+    const { access_token, expires_in, refresh_token: new_refresh_token } = tokenResponse.data;
+    const token_expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+
+    await supabase
+      .from('user_integrations')
+      .update({
+        access_token: safeEncryptToken(access_token),
+        refresh_token: new_refresh_token ? safeEncryptToken(new_refresh_token) : data.refresh_token,
+        token_expires_at,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user_id)
+      .eq('provider', 'discord');
+
+    console.log('[Discord Refresh] Token refreshed for user:', user_id);
+
+    res.json({
+      success: true,
+      data: {
+        access_token,
+        refresh_token: new_refresh_token,
+        expires_in
+      }
+    });
+  } catch (err: any) {
+    console.error('Discord token refresh error:', err.response?.data || err.message);
+    res.status(401).json({ success: false, error: 'Failed to refresh token' });
+  }
+});
+
+/**
+ * Refresh YouTube token by user_id (fetches encrypted token from DB)
+ * POST /auth/youtube/refresh-by-user
+ */
+router.post('/youtube/refresh-by-user', async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: 'Missing user_id' });
+  }
+
+  if (!config.supabase.isConfigured) {
+    return res.status(503).json({ success: false, error: 'Database not configured' });
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return res.status(503).json({ success: false, error: 'Database connection failed' });
+
+    const { data, error } = await supabase
+      .from('user_integrations')
+      .select('refresh_token, tokens_encrypted')
+      .eq('user_id', user_id)
+      .eq('provider', 'youtube')
+      .single();
+
+    if (error || !data?.refresh_token) {
+      return res.status(404).json({ success: false, error: 'No refresh token found' });
+    }
+
+    const refresh_token = safeDecryptToken(data.refresh_token, data.tokens_encrypted);
+
+    const tokenResponse = await axios.post(
+      'https://oauth2.googleapis.com/token',
+      new URLSearchParams({
+        client_id: config.youtube.clientId,
+        client_secret: config.youtube.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }
+      }
+    );
+
+    const { access_token, expires_in } = tokenResponse.data;
+    const token_expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+
+    await supabase
+      .from('user_integrations')
+      .update({
+        access_token: safeEncryptToken(access_token),
+        token_expires_at,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user_id)
+      .eq('provider', 'youtube');
+
+    console.log('[YouTube Refresh] Token refreshed for user:', user_id);
+
+    res.json({
+      success: true,
+      data: {
+        access_token,
+        expires_in
+      }
+    });
+  } catch (err: any) {
+    console.error('YouTube token refresh error:', err.response?.data || err.message);
+    res.status(401).json({ success: false, error: 'Failed to refresh token' });
+  }
+});
+
 // --- LAST.FM AUTH ---
 
 /**

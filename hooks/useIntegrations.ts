@@ -295,8 +295,9 @@ export function useIntegrations() {
    * Connect Spotify using backend OAuth flow (for playback control)
    */
   const connectSpotifyPlayback = useCallback(async () => {
-    window.location.href = 'http://localhost:3001/auth/spotify';
-  }, []);
+    if (!user) return;
+    api.redirectToOAuth('spotify', user.id, user.email || '');
+  }, [user]);
 
   return {
     integrations,

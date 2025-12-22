@@ -23,11 +23,11 @@ type TokenListener = (provider: OAuthProvider, event: TokenEventType) => void;
 // Refresh margin - refresh 5 minutes before expiry
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
-// Refresh endpoints by provider
+// Refresh endpoints by provider (user-ID based - fetch token from DB server-side)
 const REFRESH_ENDPOINTS: Record<OAuthProvider, string> = {
-  spotify: '/auth/spotify/refresh',
-  discord: '/auth/discord/refresh',
-  youtube: '/auth/youtube/refresh',
+  spotify: '/auth/spotify/refresh-by-user',
+  discord: '/auth/discord/refresh-by-user',
+  youtube: '/auth/youtube/refresh-by-user',
   lastfm: '', // Last.fm uses session keys, no refresh needed
 };
 
