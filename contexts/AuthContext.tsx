@@ -154,50 +154,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Helper to handle successful session
     const handleSession = async (session: Session, source: string) => {
+      // 1. Prepare profile data (Extract from session FIRST so it's available for fallback)
+      const user = session.user;
+      const metadata = user.user_metadata || {};
+      const identityData = user.identities?.[0]?.identity_data || {};
+      
+      console.log(`[Auth] Session established via ${source}`, {
+        email: user.email,
+        id: user.id,
+        metadata,
+        identityData,
+        identities: user.identities
+      });
+      
+      // Determine Display Name
+      const displayName = identityData.full_name 
+        || identityData.name 
+        || metadata.full_name 
+        || metadata.name 
+        || metadata.display_name 
+        || user.email?.split('@')[0] 
+        || identityData.email?.split('@')[0]
+        || 'User';
+        
+      // Determine Avatar
+      const avatarUrl = identityData.picture 
+        || identityData.avatar_url 
+        || metadata.avatar_url 
+        || metadata.picture;
+        
+      // Determine Email
+      const email = user.email || identityData.email || metadata.email || '';
+
+      // Prepare object for DB upsert
+      const profileData = {
+        id: user.id,
+        email,
+        display_name: displayName,
+        avatar_url: avatarUrl,
+        updated_at: new Date().toISOString(),
+      };
+
       try {
-        const user = session.user;
-        const metadata = user.user_metadata || {};
-        // Google OAuth stores user info in identities[0].identity_data
-        const identityData = user.identities?.[0]?.identity_data || {};
-        
-        console.log(`[Auth] Session established via ${source}`, {
-          email: user.email,
-          id: user.id,
-          metadata,
-          identityData,
-          identities: user.identities
-        });
-        
-        // Prepare profile data
-        // Try multiple sources for display name
-        const displayName = identityData.full_name 
-          || identityData.name 
-          || metadata.full_name 
-          || metadata.name 
-          || metadata.display_name 
-          || user.email?.split('@')[0] 
-          || identityData.email?.split('@')[0]
-          || 'User';
-          
-        // Try multiple sources for avatar
-        const avatarUrl = identityData.picture 
-          || identityData.avatar_url 
-          || metadata.avatar_url 
-          || metadata.picture;
-          
-        // Try multiple sources for email
-        const email = user.email || identityData.email || metadata.email || '';
-
-        const profileData = {
-          id: user.id,
-          email,
-          display_name: displayName,
-          avatar_url: avatarUrl,
-          updated_at: new Date().toISOString(),
-        };
-
-        // Fetch profile from database (may fail due to RLS or missing table)
+        // 2. Database Operations (May fail due to RLS/Network)
         let profile: UserProfile | null = null;
+        
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -218,7 +219,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               .single();
               
               if (upsertError) {
-                  console.error('[Auth] Failed to upsert profile:', upsertError);
+                  // Don't throw here, just log. We have the fallback ready.
+                  console.error('[Auth] Failed to upsert profile (likely RLS):', upsertError);
               } else if (upsertData) {
                   profile = upsertData as UserProfile;
                   console.log('[Auth] ✅ Profile successfully upserted:', profile);
@@ -228,14 +230,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.warn('[Auth] Failed during profile DB operations:', fetchErr);
         }
         
-        // If still no profile (DB failure), use fallback data
+        // 3. Finalize Profile (Use DB version or Fallback)
         if (!profile) {
-          console.log('[Auth] ⚠️ No profile from DB, using fallback data for local state');
+          console.log('[Auth] ⚠️ No profile from DB (or upsert failed), using high-quality fallback');
           profile = {
             id: user.id,
             email,
-            display_name: displayName,
-            avatar_url: avatarUrl,
+            display_name: displayName, // Uses the computed name (e.g. "Samuel")
+            avatar_url: avatarUrl,     // Uses the computed avatar
           };
         }
         
@@ -258,14 +260,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           spotifyTokens,
         });
       } catch (err: any) {
-        console.error('[Auth] ❌ handleSession failed:', err.message || err);
-        // Still try to set authenticated state with minimal profile
+        console.error('[Auth] ❌ handleSession critical failure:', err.message || err);
+        // Critical Fallback: Use the pre-calculated high-quality profile
         safeSetState({
           user: session.user,
           profile: {
             id: session.user.id,
-            email: session.user.email || '',
-            display_name: 'User',
+            email: email,
+            display_name: displayName, // Correct name
+            avatar_url: avatarUrl,     // Correct avatar
           },
           session,
           isAuthenticated: true,
