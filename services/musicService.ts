@@ -230,57 +230,74 @@ export const searchUnified = async (
     spotifyToken?: string | null
 ): Promise<Song[]> => {
     if (!query) return [];
+    console.log('[searchUnified] Searching:', query, 'provider:', provider);
 
-    let results: MusicResult[] = [];
+    // Use backend API which has proper CORS handling and fallbacks
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
     
-    // 1. Fetch RAW results based on provider
     try {
-        switch (provider) {
-            case 'SPOTIFY':
-                if (spotifyToken) {
-                    // Spotify has its own mapped return type, return immediately
-                    return await searchSpotifyTracks(spotifyToken, query);
-                } else {
-                    // Fallback if token missing
-                    console.warn("Spotify selected but no token. Falling back to YouTube.");
-                    results = await searchYouTubeInternal(query);
-                }
-                break;
-            case 'YOUTUBE':
-                results = await searchYouTubeInternal(query);
-                break;
-            case 'APPLE':
-                results = await searchAppleInternal(query);
-                break;
-            case 'DEEZER':
-                results = await searchDeezerInternal(query);
-                break;
-            default:
-                results = await searchYouTubeInternal(query);
+        // For Spotify with user token, use direct Spotify search
+        if (provider === 'SPOTIFY' && spotifyToken) {
+            console.log('[searchUnified] Using Spotify with user token');
+            return await searchSpotifyTracks(spotifyToken, query);
+        }
+        
+        // For all other providers, use backend API
+        const url = `${BACKEND_URL}/api/music/search?q=${encodeURIComponent(query)}&provider=${provider}&limit=12`;
+        console.log('[searchUnified] Calling backend:', url);
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Backend returned ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('[searchUnified] Backend response:', data.success, 'count:', data.data?.length);
+        
+        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+            return data.data.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                artist: item.artist,
+                album: item.album || provider,
+                duration: item.duration || '0:00',
+                coverUrl: item.coverUrl,
+                mood: item.mood || provider,
+                previewUrl: item.previewUrl,
+                externalUrl: item.externalUrl,
+                spotifyUri: item.spotifyUri
+            }));
+        }
+        
+        console.log('[searchUnified] No results from backend, trying client-side fallback');
+    } catch (err) {
+        console.error('[searchUnified] Backend search failed:', err);
+    }
+    
+    // Fallback: Try client-side Apple Music (most reliable, no CORS issues)
+    console.log('[searchUnified] Falling back to client-side iTunes');
+    try {
+        const appleResults = await searchAppleInternal(query);
+        if (appleResults.length > 0) {
+            console.log('[searchUnified] iTunes fallback success:', appleResults.length);
+            return appleResults.map(r => ({
+                id: r.id,
+                title: r.title,
+                artist: r.artist,
+                album: r.album,
+                duration: formatDuration(r.duration),
+                coverUrl: r.artworkUrl,
+                mood: 'iTunes',
+                previewUrl: r.downloadUrl,
+                externalUrl: undefined
+            }));
         }
     } catch (e) {
-        console.error("Unified search error", e);
-        return [];
+        console.error('[searchUnified] iTunes fallback also failed:', e);
     }
-
-    // 2. Map to Song interface
-    // Note: YouTube results won't have a direct 'previewUrl' playable in Audio element 
-    // unless we extract the stream. For search results list, we usually trigger play 
-    // which then resolves the stream.
     
-    return results.map(r => ({
-        id: r.id,
-        title: r.title,
-        artist: r.artist,
-        album: r.album,
-        duration: formatDuration(r.duration),
-        coverUrl: r.artworkUrl,
-        mood: provider, // Label the source
-        previewUrl: r.downloadUrl, // For Apple/Deezer this works. For YouTube it is undefined.
-        externalUrl: r.source === 'YOUTUBE' ? `https://youtube.com/watch?v=${r.id}` : undefined,
-        // Helper for YouTube playback resolution later
-        spotifyUri: r.source === 'YOUTUBE' ? `yt:${r.id}` : undefined 
-    }));
+    console.warn('[searchUnified] All sources failed');
+    return [];
 };
 
 export const getYouTubeAudioStream = async (videoId: string): Promise<string | null> => {
