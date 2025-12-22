@@ -9,6 +9,7 @@ import * as devApi from '../services/developerApiService';
 import * as webhooks from '../services/webhookService';
 import * as extensionBridge from '../services/extensionBridge';
 import { useAuth } from '../contexts/AuthContext';
+import { useSpotifyData } from '../hooks/useSpotifyData';
 
 // Phase 5 Components - Lazy loaded for performance
 const ReleaseRadar = lazy(() => import('./ReleaseRadar'));
@@ -52,6 +53,7 @@ const Extensions: React.FC<ExtensionsProps> = ({
     onDisconnectSpotify
 }) => {
   const { user } = useAuth();
+  const { hasSpotifyAccess, recentlyPlayed: spotifyRecentlyPlayed } = useSpotifyData();
   const [activeTab, setActiveTab] = useState<'SOURCES' | 'DISCOVER' | 'APPS' | 'DEV'>('SOURCES');
   const [showSmartPlaylist, setShowSmartPlaylist] = useState(false);
   const [reportPeriod, setReportPeriod] = useState<'week' | 'month' | 'year'>('week');
@@ -316,7 +318,7 @@ const Extensions: React.FC<ExtensionsProps> = ({
                                   </div>
                                   <div className="flex flex-col items-end gap-2">
                                       {isActive && <ICONS.CheckCircle className="text-green-400" size={24} />}
-                                      {p.id === 'SPOTIFY' && !spotifyToken && <span className="text-[10px] font-bold border border-red-500 text-red-500 px-2 py-0.5 uppercase">Auth Required</span>}
+                                      {p.id === 'SPOTIFY' && !hasSpotifyAccess && <span className="text-[10px] font-bold border border-red-500 text-red-500 px-2 py-0.5 uppercase">Auth Required</span>}
                                   </div>
                               </div>
                           </div>
@@ -356,7 +358,7 @@ const Extensions: React.FC<ExtensionsProps> = ({
                 <Suspense fallback={<TabLoadingFallback />}>
                   <IntegrationsPanel
                     onSpotifyConnect={handleSpotifyConnect}
-                    spotifyConnected={!!spotifyToken}
+                    spotifyConnected={hasSpotifyAccess}
                     spotifyProfile={spotifyProfile}
                     onSpotifyDisconnect={onDisconnectSpotify}
                   />
