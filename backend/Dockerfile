@@ -14,6 +14,9 @@ COPY backend/package*.json ./
 # Use npm install (not ci) to allow building native modules
 RUN npm install
 
+# Cache bust - ensures fresh source copy on each build
+ARG CACHEBUST=1
+
 # Copy source code from backend directory
 COPY backend/src ./src
 COPY backend/scripts ./scripts
