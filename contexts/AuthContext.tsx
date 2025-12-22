@@ -197,47 +197,61 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       try {
         // 2. Database Operations (May fail due to RLS/Network)
+        // Wrap in timeout to prevent hanging - use fallback if DB takes too long
         let profile: UserProfile | null = null;
         
         console.log('[Auth] Attempting to fetch profile from DB for user:', user.id);
         
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+        const fetchProfileWithTimeout = async (): Promise<UserProfile | null> => {
+          const timeoutPromise = new Promise<null>((_, reject) => 
+            setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
+          );
+          
+          const fetchPromise = (async () => {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', user.id)
+              .single();
 
-          console.log('[Auth] Profile fetch result:', { data: !!data, error: error?.code });
+            console.log('[Auth] Profile fetch result:', { data: !!data, error: error?.code });
 
-          if (error) {
-            // PGRST116 = "No rows found" - this is expected for new users
-            if (error.code === 'PGRST116') {
-              console.log('[Auth] Profile not found in DB (new user), attempting to create...');
-              const { data: upsertData, error: upsertError } = await supabase
-                .from('profiles')
-                .upsert(profileData, { onConflict: 'id' })
-                .select()
-                .single();
-                
-              console.log('[Auth] Upsert result:', { data: !!upsertData, error: upsertError?.code });
-                
-              if (upsertError) {
-                console.error('[Auth] Failed to upsert profile (likely RLS):', upsertError);
-              } else if (upsertData) {
-                profile = upsertData as UserProfile;
-                console.log('[Auth] ✅ Profile successfully created:', profile.display_name);
+            if (error) {
+              if (error.code === 'PGRST116') {
+                console.log('[Auth] Profile not found in DB (new user), attempting to create...');
+                const { data: upsertData, error: upsertError } = await supabase
+                  .from('profiles')
+                  .upsert(profileData, { onConflict: 'id' })
+                  .select()
+                  .single();
+                  
+                console.log('[Auth] Upsert result:', { data: !!upsertData, error: upsertError?.code });
+                  
+                if (upsertError) {
+                  console.error('[Auth] Failed to upsert profile (likely RLS - missing INSERT policy):', upsertError);
+                  return null;
+                } else if (upsertData) {
+                  console.log('[Auth] ✅ Profile successfully created:', (upsertData as UserProfile).display_name);
+                  return upsertData as UserProfile;
+                }
+              } else {
+                console.error('[Auth] Database error fetching profile:', error);
               }
-            } else {
-              // Some other database error
-              console.error('[Auth] Database error fetching profile:', error);
+              return null;
+            } else if (data) {
+              console.log('[Auth] Profile found in DB:', (data as UserProfile).display_name);
+              return data as UserProfile;
             }
-          } else if (data) {
-            profile = data as UserProfile;
-            console.log('[Auth] Profile found in DB:', profile.display_name);
-          }
-        } catch (fetchErr) {
-          console.warn('[Auth] Exception during profile DB operations:', fetchErr);
+            return null;
+          })();
+          
+          return Promise.race([fetchPromise, timeoutPromise]) as Promise<UserProfile | null>;
+        };
+        
+        try {
+          profile = await fetchProfileWithTimeout();
+        } catch (fetchErr: any) {
+          console.warn('[Auth] Profile fetch failed or timed out:', fetchErr.message);
         }
         
         // 3. Finalize Profile (Use DB version or Fallback)
