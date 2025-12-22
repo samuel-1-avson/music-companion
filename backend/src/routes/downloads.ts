@@ -271,4 +271,213 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// =============================================
+// USER-SPECIFIC CLOUD DOWNLOAD ROUTES
+// =============================================
+import * as supabaseStorage from '../services/supabaseStorage.js';
+
+/**
+ * Start a cloud download for a specific user
+ * POST /api/downloads/user/:userId
+ */
+router.post('/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { videoId, title, artist, duration, coverUrl } = req.body;
+  
+  if (!videoId || !title) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Missing required fields: videoId, title' 
+    });
+  }
+  
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid YouTube video ID' 
+    });
+  }
+  
+  try {
+    // Check if user already has this download in cloud
+    const existing = await supabaseStorage.hasUserDownload(userId, videoId);
+    if (existing) {
+      return res.json({
+        success: true,
+        data: {
+          id: existing.id,
+          cached: true,
+          cloudUrl: await supabaseStorage.getDownloadUrl(existing.storagePath),
+          message: 'Song already in your cloud library'
+        }
+      });
+    }
+    
+    // Start local download first
+    console.log(`[Download Route] Starting cloud download for user ${userId}: ${videoId}`);
+    const result = await downloadService.startDownload(videoId, {
+      title,
+      artist,
+      duration,
+      coverUrl
+    });
+    
+    // After download completes, upload to Supabase Storage
+    // This is done async - we return immediately
+    uploadToCloudAfterDownload(userId, result.id, videoId, { title, artist, duration, coverUrl });
+    
+    res.json({
+      success: true,
+      data: {
+        id: result.id,
+        cached: result.cached,
+        message: result.cached ? 'Uploading to cloud...' : 'Download started, will sync to cloud'
+      }
+    });
+  } catch (error: any) {
+    console.error(`[Download Route] Cloud download ERROR:`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to start cloud download' 
+    });
+  }
+});
+
+/**
+ * Helper: Upload to cloud after local download completes
+ */
+async function uploadToCloudAfterDownload(
+  userId: string, 
+  downloadId: string, 
+  videoId: string,
+  metadata: { title: string; artist?: string; duration?: string; coverUrl?: string }
+) {
+  // Wait for download to complete (poll every 2 seconds for up to 5 minutes)
+  const maxAttempts = 150;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const status = await downloadService.getDownloadStatus(downloadId);
+    if (!status) break;
+    
+    if (status.status === 'complete' && status.file_path) {
+      console.log(`[Cloud Upload] Download complete, uploading to cloud: ${videoId}`);
+      
+      // Upload to Supabase Storage
+      const uploadResult = await supabaseStorage.uploadToStorage(userId, videoId, status.file_path);
+      
+      if (uploadResult.success && uploadResult.path) {
+        // Save metadata to user_downloads table
+        await supabaseStorage.saveDownloadMetadata({
+          userId,
+          videoId,
+          title: metadata.title,
+          artist: metadata.artist,
+          duration: metadata.duration,
+          coverUrl: metadata.coverUrl,
+          storagePath: uploadResult.path,
+          fileSize: status.file_size || 0,
+          status: 'completed'
+        });
+        console.log(`[Cloud Upload] Successfully uploaded to cloud: ${videoId}`);
+      } else {
+        console.error(`[Cloud Upload] Failed to upload: ${uploadResult.error}`);
+        await supabaseStorage.saveDownloadMetadata({
+          userId,
+          videoId,
+          title: metadata.title,
+          storagePath: '',
+          fileSize: 0,
+          status: 'failed',
+          error: uploadResult.error
+        });
+      }
+      break;
+    }
+    
+    if (status.status === 'error') {
+      console.error(`[Cloud Upload] Download failed: ${status.error}`);
+      break;
+    }
+  }
+}
+
+/**
+ * Get user's cloud downloads
+ * GET /api/downloads/user/:userId
+ */
+router.get('/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    const downloads = await supabaseStorage.getUserDownloads(userId);
+    
+    // Add cloud URLs to each download
+    const downloadsWithUrls = await Promise.all(
+      downloads.map(async (d) => ({
+        ...d,
+        cloudUrl: await supabaseStorage.getDownloadUrl(d.storagePath)
+      }))
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        downloads: downloadsWithUrls,
+        count: downloadsWithUrls.length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Delete a user's cloud download
+ * DELETE /api/downloads/user/:userId/:videoId
+ */
+router.delete('/user/:userId/:videoId', async (req, res) => {
+  const { userId, videoId } = req.params;
+  
+  try {
+    const deleted = await supabaseStorage.deleteUserDownload(userId, videoId);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Download not found' });
+    }
+    res.json({ success: true, data: { deleted: true } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Check if user has a specific download in cloud
+ * GET /api/downloads/user/:userId/check/:videoId
+ */
+router.get('/user/:userId/check/:videoId', async (req, res) => {
+  const { userId, videoId } = req.params;
+  
+  try {
+    const download = await supabaseStorage.hasUserDownload(userId, videoId);
+    if (download) {
+      const cloudUrl = await supabaseStorage.getDownloadUrl(download.storagePath);
+      res.json({
+        success: true,
+        data: {
+          exists: true,
+          download: { ...download, cloudUrl }
+        }
+      });
+    } else {
+      res.json({
+        success: true,
+        data: { exists: false }
+      });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
+

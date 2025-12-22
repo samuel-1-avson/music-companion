@@ -5,17 +5,22 @@ import { Song } from '../types';
 import { saveSong, getOfflineSongs, deleteSong } from '../utils/db';
 import { searchMusic, downloadAudioAsBlob, getYouTubeAudioStream, MusicResult } from '../services/musicService';
 import * as downloadService from '../services/downloadService';
+import { useAuth } from '../contexts/AuthContext';
+import api from '../utils/apiClient';
 
 interface OfflineLibraryProps {
   onPlaySong: (song: Song) => void;
 }
 
 const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
+  const { user, isAuthenticated } = useAuth();
+  
   const [songs, setSongs] = useState<Song[]>([]);
   const [serverDownloads, setServerDownloads] = useState<downloadService.DownloadRecord[]>([]);
+  const [cloudDownloads, setCloudDownloads] = useState<any[]>([]);
   const [storageStats, setStorageStats] = useState<downloadService.DownloadStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'LIBRARY' | 'DOWNLOADER' | 'SERVER'>('LIBRARY');
+  const [activeTab, setActiveTab] = useState<'LIBRARY' | 'DOWNLOADER' | 'SERVER' | 'CLOUD'>('LIBRARY');
   
   // Library Management State
   const [localFilter, setLocalFilter] = useState('');
@@ -37,7 +42,10 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
   useEffect(() => {
     loadSongs();
     loadServerDownloads();
-  }, []);
+    if (isAuthenticated && user?.id) {
+      loadCloudDownloads();
+    }
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
       if (logEndRef.current) {
@@ -61,6 +69,18 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
     if (data) {
       setServerDownloads(data.downloads.filter(d => d.status === 'complete'));
       setStorageStats(data.stats);
+    }
+  };
+
+  const loadCloudDownloads = async () => {
+    if (!user?.id) return;
+    try {
+      const response = await api.get(`/api/downloads/user/${user.id}`);
+      if (response.data?.success) {
+        setCloudDownloads(response.data.data.downloads || []);
+      }
+    } catch (err) {
+      console.error('[CloudDownloads] Failed to load:', err);
     }
   };
 
@@ -412,6 +432,14 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
               >
                   <ICONS.DownloadCloud size={14} /> DOWNLOAD
               </button>
+              {isAuthenticated && (
+                <button 
+                  onClick={() => setActiveTab('CLOUD')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${activeTab === 'CLOUD' ? 'bg-[var(--text-main)] text-[var(--bg-main)] shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                    <ICONS.HardDrive size={14} /> CLOUD
+                </button>
+              )}
           </div>
        </div>
 
@@ -749,6 +777,80 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                           </div>
                       </div>
 
+                  </div>
+              </div>
+          )}
+
+          {/* --- CLOUD DOWNLOADS VIEW --- */}
+          {activeTab === 'CLOUD' && (
+              <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  
+                  {/* Info Banner */}
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4 flex items-center gap-4">
+                      <ICONS.HardDrive size={24} className="text-purple-500" />
+                      <div>
+                          <h4 className="font-bold text-[var(--text-main)]">Cloud Library</h4>
+                          <p className="text-xs text-[var(--text-muted)]">
+                              Downloads synced to your cloud storage. Available on any device when you sign in.
+                          </p>
+                      </div>
+                  </div>
+
+                  {/* Empty State */}
+                  {cloudDownloads.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)] border-2 border-dashed border-[var(--border)] rounded-3xl bg-[var(--bg-card)]/30">
+                          <div className="bg-[var(--bg-card)] p-4 rounded-full mb-4 shadow-sm">
+                              <ICONS.HardDrive size={48} className="opacity-50" />
+                          </div>
+                          <h3 className="text-lg font-bold font-mono uppercase">No Cloud Downloads</h3>
+                          <p className="text-sm mt-2 opacity-70">Your downloaded songs will appear here.</p>
+                      </div>
+                  )}
+
+                  {/* Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {cloudDownloads.map((record: any) => (
+                          <div 
+                              key={record.id} 
+                              onClick={() => {
+                                  if (record.cloudUrl) {
+                                      const song: Song = {
+                                          id: `cloud-${record.id}`,
+                                          title: record.title,
+                                          artist: record.artist || 'Unknown Artist',
+                                          album: 'Cloud Library',
+                                          duration: record.duration || '0:00',
+                                          coverUrl: record.coverUrl || 'https://picsum.photos/200/200?grayscale',
+                                          mood: 'Cloud',
+                                          isOffline: false,
+                                          externalUrl: record.cloudUrl
+                                      };
+                                      onPlaySong(song);
+                                  }
+                              }}
+                              className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 flex gap-3 hover:shadow-lg transition-all cursor-pointer relative overflow-hidden"
+                          >
+                              <div className="w-20 h-20 rounded-xl overflow-hidden relative flex-shrink-0 bg-gray-200">
+                                  <img src={record.coverUrl || 'https://picsum.photos/200/200?grayscale'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="art" />
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                      <ICONS.Play size={24} className="text-white fill-current" />
+                                  </div>
+                              </div>
+                              
+                              <div className="flex-1 flex flex-col justify-center min-w-0">
+                                  <h4 className="font-bold text-sm text-[var(--text-main)] truncate leading-tight mb-1">{record.title}</h4>
+                                  <p className="text-xs text-[var(--text-muted)] truncate mb-2">{record.artist || 'Unknown'}</p>
+                                  <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 border border-purple-500/30">
+                                          CLOUD
+                                      </span>
+                                      <span className="text-[10px] font-mono text-[var(--text-muted)] opacity-60">
+                                          {(record.fileSize / 1024 / 1024).toFixed(1)} MB
+                                      </span>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
                   </div>
               </div>
           )}
