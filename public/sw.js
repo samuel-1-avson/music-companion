@@ -1,5 +1,5 @@
 // Music Companion Service Worker
-const CACHE_NAME = 'music-companion-v1';
+const CACHE_NAME = 'music-companion-v2';
 
 // Files to cache for offline use
 const STATIC_ASSETS = [
