@@ -168,45 +168,75 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           identities: user.identities
         });
         
+        // Prepare profile data
+        // Try multiple sources for display name
+        const displayName = identityData.full_name 
+          || identityData.name 
+          || metadata.full_name 
+          || metadata.name 
+          || metadata.display_name 
+          || user.email?.split('@')[0] 
+          || identityData.email?.split('@')[0]
+          || 'User';
+          
+        // Try multiple sources for avatar
+        const avatarUrl = identityData.picture 
+          || identityData.avatar_url 
+          || metadata.avatar_url 
+          || metadata.picture;
+          
+        // Try multiple sources for email
+        const email = user.email || identityData.email || metadata.email || '';
+
+        const profileData = {
+          id: user.id,
+          email,
+          display_name: displayName,
+          avatar_url: avatarUrl,
+          updated_at: new Date().toISOString(),
+        };
+
         // Fetch profile from database (may fail due to RLS or missing table)
         let profile: UserProfile | null = null;
         try {
-          profile = await fetchProfile(user.id);
-          console.log('[Auth] Profile from DB:', profile);
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (data) {
+             profile = data as UserProfile;
+             console.log('[Auth] Profile found in DB:', profile);
+          } else {
+             // If not found, attempt to insert it
+             console.log('[Auth] Profile not found in DB, attempting to create/upsert...');
+             const { data: upsertData, error: upsertError } = await supabase
+              .from('profiles')
+              .upsert(profileData, { onConflict: 'id' })
+              .select()
+              .single();
+              
+              if (upsertError) {
+                  console.error('[Auth] Failed to upsert profile:', upsertError);
+              } else if (upsertData) {
+                  profile = upsertData as UserProfile;
+                  console.log('[Auth] ✅ Profile successfully upserted:', profile);
+              }
+          }
         } catch (fetchErr) {
-          console.warn('[Auth] Failed to fetch profile from DB:', fetchErr);
+          console.warn('[Auth] Failed during profile DB operations:', fetchErr);
         }
         
-        // If no profile exists, create a fallback from user metadata or identity data
+        // If still no profile (DB failure), use fallback data
         if (!profile) {
-          console.log('[Auth] ⚠️ No profile found, creating fallback from identity data');
-          
-          // Try multiple sources for display name
-          const displayName = identityData.full_name 
-            || identityData.name 
-            || metadata.full_name 
-            || metadata.name 
-            || metadata.display_name 
-            || user.email?.split('@')[0] 
-            || identityData.email?.split('@')[0]
-            || 'User';
-            
-          // Try multiple sources for avatar
-          const avatarUrl = identityData.picture 
-            || identityData.avatar_url 
-            || metadata.avatar_url 
-            || metadata.picture;
-            
-          // Try multiple sources for email
-          const email = user.email || identityData.email || metadata.email || '';
-          
+          console.log('[Auth] ⚠️ No profile from DB, using fallback data for local state');
           profile = {
             id: user.id,
             email,
             display_name: displayName,
             avatar_url: avatarUrl,
           };
-          console.log('[Auth] ✅ Created fallback profile:', profile);
         }
         
         const spotifyTokens = extractSpotifyTokens(session);
