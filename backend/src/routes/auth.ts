@@ -268,7 +268,7 @@ router.post('/verify-integration', async (req, res) => {
  * POST /auth/spotify/refresh
  */
 router.post('/spotify/refresh', async (req, res) => {
-  const { refresh_token } = req.body;
+  const { refresh_token, user_id } = req.body;
 
   if (!refresh_token) {
     return res.status(400).json({ success: false, error: 'Missing refresh_token' });
@@ -289,11 +289,32 @@ router.post('/spotify/refresh', async (req, res) => {
       }
     );
 
+    const { access_token, expires_in } = tokenResponse.data;
+    const token_expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+
+    // Persist the new token to database if user_id provided
+    if (user_id && config.supabase.isConfigured) {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        await supabase
+          .from('user_integrations')
+          .update({
+            access_token: safeEncryptToken(access_token),
+            token_expires_at,
+            tokens_encrypted: config.security.isEncryptionConfigured,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user_id)
+          .eq('provider', 'spotify');
+        console.log('[Spotify Refresh] Token persisted for user:', user_id);
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        access_token: tokenResponse.data.access_token,
-        expires_in: tokenResponse.data.expires_in
+        access_token,
+        expires_in
       }
     });
   } catch (err: any) {
@@ -302,9 +323,11 @@ router.post('/spotify/refresh', async (req, res) => {
   }
 });
 
+
 /**
  * Get Spotify access token (for initial load)
  * GET /auth/spotify/token?user_id=xxx
+ * Auto-refreshes if token is expired
  */
 router.get('/spotify/token', async (req, res) => {
   const { user_id } = req.query;
@@ -323,7 +346,7 @@ router.get('/spotify/token', async (req, res) => {
 
     const { data, error } = await supabase
       .from('user_integrations')
-      .select('access_token, token_expires_at, tokens_encrypted, email_verified, metadata')
+      .select('access_token, refresh_token, token_expires_at, tokens_encrypted, email_verified, metadata')
       .eq('user_id', user_id)
       .eq('provider', 'spotify')
       .single();
@@ -338,13 +361,53 @@ router.get('/spotify/token', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Integration pending verification' });
     }
 
-    const accessToken = safeDecryptToken(data.access_token, data.tokens_encrypted);
+    let accessToken = safeDecryptToken(data.access_token, data.tokens_encrypted);
+    let expiresAt = data.token_expires_at ? new Date(data.token_expires_at).getTime() : null;
     
-    // Check if expired
-    const expiresAt = data.token_expires_at ? new Date(data.token_expires_at).getTime() : null;
+    // Check if token is expired or expiring soon (within 5 minutes)
+    const isExpired = expiresAt && Date.now() > expiresAt - (5 * 60 * 1000);
     
-    // If we have a refresh token (we don't check here, but IntegrationTokenManager will handle it),
-    // we return what we have. Frontend can trigger refresh if needed via tokenManager.
+    if (isExpired && data.refresh_token) {
+      console.log('[Spotify Token] Token expired, attempting refresh...');
+      try {
+        const refreshToken = safeDecryptToken(data.refresh_token, data.tokens_encrypted);
+        const tokenResponse = await axios.post(
+          'https://accounts.spotify.com/api/token',
+          new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+          }),
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${Buffer.from(`${config.spotify.clientId}:${config.spotify.clientSecret}`).toString('base64')}`
+            }
+          }
+        );
+        
+        const { access_token: newToken, expires_in } = tokenResponse.data;
+        const newExpiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
+        
+        // Update database with new token
+        await supabase
+          .from('user_integrations')
+          .update({
+            access_token: safeEncryptToken(newToken),
+            token_expires_at: newExpiresAt,
+            tokens_encrypted: config.security.isEncryptionConfigured,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user_id)
+          .eq('provider', 'spotify');
+        
+        accessToken = newToken;
+        expiresAt = new Date(newExpiresAt).getTime();
+        console.log('[Spotify Token] Auto-refreshed and persisted for user:', user_id);
+      } catch (refreshErr: any) {
+        console.error('[Spotify Token] Auto-refresh failed:', refreshErr.message);
+        // Return expired token anyway - frontend will handle 401
+      }
+    }
     
     res.json({
       success: true,
@@ -358,6 +421,7 @@ router.get('/spotify/token', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to retrieve token' });
   }
 });
+
 
 // --- DISCORD AUTH ---
 
