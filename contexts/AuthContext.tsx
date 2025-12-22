@@ -144,26 +144,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Initialize auth state
   useEffect(() => {
     const initializeAuth = async () => {
-      // Check if this is an OAuth callback (has access_token in URL hash)
+      // Check for PKCE code in query params (new flow)
+      const queryParams = new URLSearchParams(window.location.search);
+      const code = queryParams.get('code');
+      
+      // Check for implicit tokens in hash (old flow)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
-      const isOAuthCallback = !!accessToken;
       
-      if (isOAuthCallback) {
-        console.log('[Auth] OAuth callback detected with tokens in URL');
-        
-        // Try to set session manually from URL tokens
+      // Handle PKCE code exchange
+      if (code) {
+        console.log('[Auth] PKCE code detected, exchanging for session...');
         try {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken!,
-            refresh_token: refreshToken || '',
-          });
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           
           if (error) {
-            console.error('[Auth] Failed to set session from URL tokens:', error);
+            console.error('[Auth] PKCE code exchange failed:', error);
           } else if (data.session) {
-            console.log('[Auth] Session set successfully from URL tokens');
+            console.log('[Auth] Session obtained from PKCE code exchange');
             const profile = await fetchProfile(data.session.user.id);
             const spotifyTokens = extractSpotifyTokens(data.session);
             
@@ -178,9 +177,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               spotifyTokens,
             });
             
-            // Clean up URL hash
+            // Clean up URL
             window.history.replaceState(null, '', window.location.pathname);
-            return; // Don't continue to getSession
+            return;
+          }
+        } catch (e) {
+          console.error('[Auth] PKCE exchange error:', e);
+        }
+      }
+      
+      // Handle implicit flow tokens in hash
+      if (accessToken) {
+        console.log('[Auth] Implicit tokens detected in URL hash');
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+          
+          if (error) {
+            console.error('[Auth] Failed to set session from tokens:', error);
+          } else if (data.session) {
+            console.log('[Auth] Session set from implicit tokens');
+            const profile = await fetchProfile(data.session.user.id);
+            const spotifyTokens = extractSpotifyTokens(data.session);
+            
+            integrationTokenManager.setUserId(data.session.user.id);
+            
+            setState({
+              user: data.session.user,
+              profile,
+              session: data.session,
+              isAuthenticated: true,
+              isLoading: false,
+              spotifyTokens,
+            });
+            
+            window.history.replaceState(null, '', window.location.pathname);
+            return;
           }
         } catch (e) {
           console.error('[Auth] Error setting session:', e);
