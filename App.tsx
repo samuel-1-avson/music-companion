@@ -190,8 +190,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (profile?.display_name) {
       setUserName(profile.display_name);
+    } else if (!isAuthenticated) {
+      // Reset to default when signed out
+      setUserName('User');
     }
-  }, [profile]);
+  }, [profile, isAuthenticated]);
 
   // Favorites are now loaded by useFavorites hook automatically
 
@@ -1102,7 +1105,9 @@ const App: React.FC = () => {
             fallbackTitle="View Error"
             onReset={() => setCurrentView(AppView.DASHBOARD)}
           >
-            {renderContent()}
+            <Suspense fallback={<LoadingSkeleton />}>
+              {renderContent()}
+            </Suspense>
           </ErrorBoundary>
         </div>
         
