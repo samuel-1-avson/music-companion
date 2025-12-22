@@ -153,7 +153,7 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
   spotifyProfile,
   onSpotifyDisconnect,
 }) => {
-  const { user, isAuthenticated, hasSpotifyAccess } = useAuth();
+  const { user, isAuthenticated, isLoading, hasSpotifyAccess } = useAuth();
   const { integrations, isConnected, connectOAuth, disconnect, connectTelegram, verifyIntegration } = useIntegrations();
   const { success, error: showError, info } = useToast();
   
@@ -242,6 +242,11 @@ const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({
   };
 
     const handleConnect = async (provider: 'spotify' | 'discord' | 'twitch' | 'youtube' | 'lastfm') => {
+    // Wait for auth to complete before checking
+    if (isLoading) {
+      info('Please wait while we verify your session...');
+      return;
+    }
     if (!isAuthenticated) {
       showError('Please sign in to connect integrations');
       return;
