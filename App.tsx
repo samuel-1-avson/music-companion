@@ -1082,8 +1082,8 @@ const App: React.FC = () => {
           <Sidebar 
             currentView={currentView} 
             onChangeView={setCurrentView} 
-            spotifyProfile={spotifyProfile} 
-            userProfile={profile}
+            spotifyProfile={isAuthenticated ? spotifyProfile : null} 
+            userProfile={isAuthenticated ? profile : null}
             isListeningForWakeWord={isWakeWordListening} 
           />
       )}
