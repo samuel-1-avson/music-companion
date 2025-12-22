@@ -125,6 +125,8 @@ export async function saveDownloadMetadata(
 
     if (error) {
       console.error('[SupabaseStorage] Metadata save error:', error);
+      console.error('[SupabaseStorage] Metadata was:', metadata);
+      console.error('[SupabaseStorage] This is likely an RLS issue. Ensure SUPABASE_SERVICE_ROLE_KEY is set in backend environment to bypass RLS.');
       return { success: false, error: error.message };
     }
 
