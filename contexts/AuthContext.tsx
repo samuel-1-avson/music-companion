@@ -156,11 +156,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const handleSession = async (session: Session, source: string) => {
       const user = session.user;
       const metadata = user.user_metadata || {};
+      // Google OAuth stores user info in identities[0].identity_data
+      const identityData = user.identities?.[0]?.identity_data || {};
       
       console.log(`[Auth] Session established via ${source}`, {
         email: user.email,
         id: user.id,
         metadata,
+        identityData,
         identities: user.identities
       });
       
@@ -168,19 +171,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       let profile = await fetchProfile(user.id);
       console.log('[Auth] Profile from DB:', profile);
       
-      // If no profile exists, create a fallback from user metadata
+      // If no profile exists, create a fallback from user metadata or identity data
       if (!profile) {
-        console.log('[Auth] ⚠️ No profile found, creating fallback from user metadata:', metadata);
-        const displayName = metadata.full_name 
+        console.log('[Auth] ⚠️ No profile found, creating fallback from identity data');
+        
+        // Try multiple sources for display name
+        const displayName = identityData.full_name 
+          || identityData.name 
+          || metadata.full_name 
           || metadata.name 
           || metadata.display_name 
           || user.email?.split('@')[0] 
+          || identityData.email?.split('@')[0]
           || 'User';
-        const avatarUrl = metadata.avatar_url || metadata.picture;
+          
+        // Try multiple sources for avatar
+        const avatarUrl = identityData.picture 
+          || identityData.avatar_url 
+          || metadata.avatar_url 
+          || metadata.picture;
+          
+        // Try multiple sources for email
+        const email = user.email || identityData.email || metadata.email || '';
         
         profile = {
           id: user.id,
-          email: user.email || metadata.email || '',
+          email,
           display_name: displayName,
           avatar_url: avatarUrl,
         };
