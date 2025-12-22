@@ -7,10 +7,11 @@ interface SidebarProps {
   currentView: AppView;
   onChangeView: (view: AppView) => void;
   spotifyProfile?: SpotifyProfile | null;
+  userProfile?: { display_name: string; avatar_url?: string } | null;
   isListeningForWakeWord?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyProfile, isListeningForWakeWord }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyProfile, userProfile, isListeningForWakeWord }) => {
   const navItems = [
     { id: AppView.DASHBOARD, label: 'Dashboard', icon: ICONS.Dashboard },
     { id: AppView.CHAT, label: 'Chat Assistant', icon: ICONS.MessageSquare },
@@ -23,6 +24,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
     { id: AppView.EXTENSIONS, label: 'Integrations', icon: ICONS.Box }, // Renamed from Extensions
     { id: AppView.SETTINGS, label: 'Settings', icon: ICONS.Settings },
   ];
+
+  const profileToShow = spotifyProfile 
+    ? { name: spotifyProfile.display_name, image: spotifyProfile.images?.[0]?.url, type: 'SPOTIFY' }
+    : userProfile 
+      ? { name: userProfile.display_name || 'User', image: userProfile.avatar_url, type: 'APP' }
+      : null;
 
   return (
     <div className="w-64 bg-[var(--bg-card)] border-r-2 border-theme flex flex-col h-screen fixed left-0 top-0 z-10 transition-colors duration-300">
@@ -78,14 +85,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
       </nav>
 
       <div className="p-4 border-t-2 border-theme bg-[var(--bg-hover)] space-y-4">
-        {spotifyProfile ? (
+        {profileToShow ? (
            <div 
              className="bg-[var(--bg-card)] p-3 border-2 border-theme shadow-retro-sm flex items-center space-x-3 cursor-pointer hover:bg-gray-50 transition-colors"
              onClick={() => onChangeView(AppView.PROFILE)}
            >
              <div className="w-10 h-10 bg-gray-200 border border-black overflow-hidden flex-shrink-0">
-               {spotifyProfile.images?.[0]?.url ? (
-                 <img src={spotifyProfile.images[0].url} alt="Profile" className="w-full h-full object-cover" />
+               {profileToShow.image ? (
+                 <img src={profileToShow.image} alt="Profile" className="w-full h-full object-cover" />
                ) : (
                  <div className="w-full h-full flex items-center justify-center bg-gray-300">
                     <ICONS.User size={20} className="text-gray-500" />
@@ -93,8 +100,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyPro
                )}
              </div>
              <div className="overflow-hidden">
-               <p className="text-[10px] font-bold text-[var(--text-muted)] font-mono uppercase">CONNECTED_AS</p>
-               <p className="text-sm font-bold truncate text-[var(--text-main)]">{spotifyProfile.display_name}</p>
+               <p className="text-[10px] font-bold text-[var(--text-muted)] font-mono uppercase">
+                 {profileToShow.type === 'SPOTIFY' ? 'CONNECTED_AS' : 'SIGNED_IN_AS'}
+               </p>
+               <p className="text-sm font-bold truncate text-[var(--text-main)]">{profileToShow.name}</p>
              </div>
            </div>
         ) : (

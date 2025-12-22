@@ -1079,7 +1079,13 @@ const App: React.FC = () => {
       )}
 
       {currentView !== AppView.FOCUS && (
-          <Sidebar currentView={currentView} onChangeView={setCurrentView} spotifyProfile={spotifyProfile} isListeningForWakeWord={isWakeWordListening} />
+          <Sidebar 
+            currentView={currentView} 
+            onChangeView={setCurrentView} 
+            spotifyProfile={spotifyProfile} 
+            userProfile={profile}
+            isListeningForWakeWord={isWakeWordListening} 
+          />
       )}
       
       <main className={`relative h-full overflow-hidden flex flex-col ${currentView === AppView.FOCUS ? 'w-full' : 'flex-1 ml-64'}`}>

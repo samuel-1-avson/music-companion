@@ -154,7 +154,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Helper to handle successful session
     const handleSession = async (session: Session, source: string) => {
-      console.log(`[Auth] Session established via ${source}:`, session.user.email);
+      console.log(`[Auth] Session established via ${source}`, {
+        email: session.user.email,
+        id: session.user.id,
+        metadata: session.user.user_metadata,
+        identities: session.user.identities
+      });
+      
       const profile = await fetchProfile(session.user.id);
       const spotifyTokens = extractSpotifyTokens(session);
       
