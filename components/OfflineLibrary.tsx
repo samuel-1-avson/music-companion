@@ -238,6 +238,75 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
       addLog(`[video] ${track.videoId}`);
       
       try {
+          // If user is authenticated, use cloud download endpoint
+          if (isAuthenticated && user?.id) {
+              addLog(`[cloud] User authenticated, syncing to cloud...`);
+              const response = await api.post(`/api/downloads/user/${user.id}`, {
+                  videoId: track.videoId,
+                  title: track.title,
+                  artist: track.artist,
+                  duration: formatDuration(track.duration),
+                  coverUrl: track.artworkUrl
+              });
+              
+              if (!response.data?.success) {
+                  throw new Error(response.data?.error || 'Cloud download failed');
+              }
+              
+              if (response.data?.data?.cached) {
+                  addLog(`[cloud] Song already in your cloud library!`);
+                  addLog(`[success] Ready to play.`);
+                  setDownloadingIds(prev => {
+                      const next = new Set(prev);
+                      next.delete(track.videoId!);
+                      return next;
+                  });
+                  await loadCloudDownloads();
+                  return;
+              }
+              
+              addLog(`[queue] Download started, will sync to cloud...`);
+              addLog(`[yt-dlp] Extracting audio from YouTube...`);
+              
+              // Poll for progress using local download ID
+              const downloadId = response.data?.data?.id;
+              if (downloadId) {
+                  const cancelPoll = downloadService.pollDownloadProgress(downloadId, async (status) => {
+                      if (status.status === 'downloading') {
+                          addLog(`[progress] Downloading... ${status.progress}%`);
+                      } else if (status.status === 'processing') {
+                          addLog(`[ffmpeg] Converting to MP3...`);
+                      } else if (status.status === 'complete') {
+                          addLog(`[success] Download complete!`);
+                          addLog(`[size] ${(status.file_size / 1024 / 1024).toFixed(2)} MB`);
+                          addLog(`[cloud] Uploading to cloud storage...`);
+                          
+                          // Cloud upload happens async on backend, just reload after delay
+                          setTimeout(async () => {
+                              addLog(`[cloud] ✓ Cloud sync in progress...`);
+                              await loadCloudDownloads();
+                              await loadServerDownloads();
+                          }, 5000);
+                          
+                          setDownloadingIds(prev => {
+                              const next = new Set(prev);
+                              next.delete(track.videoId!);
+                              return next;
+                          });
+                      } else if (status.status === 'error') {
+                          addLog(`[error] ${status.error}`);
+                          setDownloadingIds(prev => {
+                              const next = new Set(prev);
+                              next.delete(track.videoId!);
+                              return next;
+                          });
+                      }
+                  }, 2000);
+              }
+              return;
+          }
+          
+          // Fallback to regular server download if not authenticated
           const result = await downloadService.startDownload({
               videoId: track.videoId,
               title: track.title,
