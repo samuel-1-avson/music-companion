@@ -368,7 +368,8 @@ async function uploadToCloudAfterDownload(
       
       if (uploadResult.success && uploadResult.path) {
         // Save metadata to user_downloads table
-        await supabaseStorage.saveDownloadMetadata({
+        console.log(`[Cloud Upload] Saving metadata for ${videoId}...`);
+        const saveResult = await supabaseStorage.saveDownloadMetadata({
           userId,
           videoId,
           title: metadata.title,
@@ -379,6 +380,13 @@ async function uploadToCloudAfterDownload(
           fileSize: status.file_size || 0,
           status: 'completed'
         });
+        
+        if (saveResult.success) {
+          console.log(`[Cloud Upload] ✅ Metadata saved successfully for ${videoId}, id: ${saveResult.id}`);
+        } else {
+          console.error(`[Cloud Upload] ❌ Metadata save FAILED for ${videoId}: ${saveResult.error}`);
+        }
+        
         console.log(`[Cloud Upload] Successfully uploaded to cloud: ${videoId}`);
       } else {
         console.error(`[Cloud Upload] Failed to upload: ${uploadResult.error}`);

@@ -44,22 +44,32 @@ def download_audio(video_id: str, output_dir: str) -> dict:
         # Rate limiting (polite to YouTube)
         'sleep_interval': 1,
         'sleep_interval_requests': 1,
-        # Anti-bot measures
+        # Anti-bot measures - enhanced
         'geo_bypass': True,
         'geo_bypass_country': 'US',
         # Retry options
-        'retries': 3,
-        'fragment_retries': 3,
-        # User agent to avoid blocks
+        'retries': 5,
+        'fragment_retries': 5,
+        'skip_unavailable_fragments': True,
+        # Modern User Agent (Chrome 120 on Windows)
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
         },
-        # YouTube specific options to bypass age-gate and other restrictions
+        # YouTube specific options - use multiple clients to bypass bot detection
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
+                # Try multiple player clients - android_embedded and ios often work better
+                'player_client': ['android_music', 'android', 'ios', 'web'],
+                # Skip formats that require login
+                'player_skip': ['webpage', 'configs'],
             }
-        }
+        },
+        # Additional options to help with bot detection
+        'ignore_no_formats_error': True,  # Try to continue even if some formats fail
+        'socket_timeout': 30,
     }
     
     try:
