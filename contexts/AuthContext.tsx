@@ -352,7 +352,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!isMounted) return;
       
       if (event === 'SIGNED_IN' && session) {
+        console.log('[Auth] 🔄 About to call handleSession...');
         await handleSession(session, `auth-state-change-${event}`);
+        console.log('[Auth] ✅ handleSession completed!');
       } else if (event === 'SIGNED_OUT') {
         safeSetState({
           user: null,
