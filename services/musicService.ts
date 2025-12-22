@@ -188,18 +188,39 @@ const parseDuration = (dur: string): number => {
 };
 
 export const searchMusic = async (query: string): Promise<MusicResult[]> => {
+  console.log('[searchMusic] Searching for:', query);
+  
   // 1. Try backend YouTube API (most reliable if API key configured)
-  const backend = await searchViaBackend(query);
-  if (backend.length > 0) return backend;
+  try {
+    const backend = await searchViaBackend(query);
+    if (backend.length > 0) {
+      console.log('[searchMusic] Got results from backend:', backend.length);
+      return backend;
+    }
+  } catch (e) {
+    console.warn('[searchMusic] Backend search failed:', e);
+  }
   
-  // 2. Fallback to Invidious
-  const yt = await searchYouTubeInternal(query);
-  if (yt.length > 0) return yt;
+  // 2. Fallback to Invidious (client-side)
+  try {
+    const yt = await searchYouTubeInternal(query);
+    if (yt.length > 0) {
+      console.log('[searchMusic] Got results from Invidious:', yt.length);
+      return yt;
+    }
+  } catch (e) {
+    console.warn('[searchMusic] Invidious search failed:', e);
+  }
   
-  // 3. Fallback to iTunes (no downloadable for yt-dlp)
+  // 3. Final fallback to iTunes (most reliable, no API key needed)
+  console.log('[searchMusic] Falling back to iTunes/Apple Music...');
   const apple = await searchAppleInternal(query);
-  if (apple.length > 0) return apple;
+  if (apple.length > 0) {
+    console.log('[searchMusic] Got results from iTunes:', apple.length);
+    return apple;
+  }
 
+  console.warn('[searchMusic] All sources failed, no results');
   return [];
 };
 
