@@ -3,8 +3,9 @@
 -- Run in Supabase SQL Editor
 -- ============================================
 
--- 1. Add INSERT policy for profiles table
+-- 1. Add INSERT policy for profiles table (drop first if exists)
 -- This allows users to create their own profile on first login
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
 CREATE POLICY "Users can insert own profile"
   ON profiles FOR INSERT
   WITH CHECK (auth.uid() = id);

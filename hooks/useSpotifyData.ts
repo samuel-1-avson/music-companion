@@ -375,6 +375,8 @@ export function useSpotifyData() {
     fetchTopArtists,
     fetchPlaylists,
     fetchCurrentlyPlaying,
+    // Raw API helper for custom calls
+    spotifyFetch,
     // Refresh all data
     refresh: loadAllData,
     // Token management (expiry info only - refresh not possible with Supabase OAuth)

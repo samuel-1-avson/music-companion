@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { Song } from '../types';
 import { searchUnified } from '../services/musicService';
+import { useSpotifyData } from '../hooks/useSpotifyData';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Release {
@@ -21,47 +22,41 @@ interface ReleaseRadarProps {
   onClose?: () => void;
 }
 
-const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
-
 const ReleaseRadar: React.FC<ReleaseRadarProps> = ({ favoriteArtists, onPlaySong, onClose }) => {
   const [releases, setReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'single' | 'album' | 'compilation'>('all');
   
-  const { spotifyTokens, hasSpotifyAccess, signInWithSpotify } = useAuth();
+  // Use useSpotifyData for token access (works with backend OAuth)
+  const { hasSpotifyAccess, spotifyFetch } = useSpotifyData();
+  // Keep signInWithSpotify from useAuth for the connect button
+  const { signInWithSpotify } = useAuth();
 
   useEffect(() => {
-    if (hasSpotifyAccess && spotifyTokens?.accessToken) {
+    if (hasSpotifyAccess) {
       loadReleases();
     } else {
       setLoading(false);
     }
-  }, [hasSpotifyAccess, spotifyTokens?.accessToken]);
+  }, [hasSpotifyAccess]);
 
   const loadReleases = async () => {
-    if (!spotifyTokens?.accessToken) return;
+    if (!hasSpotifyAccess) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      // Fetch new releases from Spotify
-      const response = await fetch(`${SPOTIFY_API_BASE}/browse/new-releases?limit=20&country=US`, {
-        headers: { Authorization: `Bearer ${spotifyTokens.accessToken}` }
-      });
+      // Use spotifyFetch helper from useSpotifyData
+      const data = await spotifyFetch('/browse/new-releases?limit=20&country=US') as { albums?: { items: any[] } } | null;
       
-      if (!response.ok) {
-        if (response.status === 401) {
-          setError('Session expired. Please reconnect Spotify.');
-        } else {
-          setError('Failed to load releases');
-        }
+      if (!data) {
+        setError('Failed to load releases');
         setLoading(false);
         return;
       }
       
-      const data = await response.json();
       const albums = data.albums?.items || [];
       
       const mappedReleases: Release[] = albums.map((album: any) => ({
