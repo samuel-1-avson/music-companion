@@ -154,94 +154,94 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Helper to handle successful session
     const handleSession = async (session: Session, source: string) => {
-      const user = session.user;
-      const metadata = user.user_metadata || {};
-      // Google OAuth stores user info in identities[0].identity_data
-      const identityData = user.identities?.[0]?.identity_data || {};
-      
-      console.log(`[Auth] Session established via ${source}`, {
-        email: user.email,
-        id: user.id,
-        metadata,
-        identityData,
-        identities: user.identities
-      });
-      
-      // Fetch profile from database
-      let profile = await fetchProfile(user.id);
-      console.log('[Auth] Profile from DB:', profile);
-      
-      // If no profile exists, create a fallback from user metadata or identity data
-      if (!profile) {
-        console.log('[Auth] ⚠️ No profile found, creating fallback from identity data');
+      try {
+        const user = session.user;
+        const metadata = user.user_metadata || {};
+        // Google OAuth stores user info in identities[0].identity_data
+        const identityData = user.identities?.[0]?.identity_data || {};
         
-        // Try multiple sources for display name
-        const displayName = identityData.full_name 
-          || identityData.name 
-          || metadata.full_name 
-          || metadata.name 
-          || metadata.display_name 
-          || user.email?.split('@')[0] 
-          || identityData.email?.split('@')[0]
-          || 'User';
-          
-        // Try multiple sources for avatar
-        const avatarUrl = identityData.picture 
-          || identityData.avatar_url 
-          || metadata.avatar_url 
-          || metadata.picture;
-          
-        // Try multiple sources for email
-        const email = user.email || identityData.email || metadata.email || '';
-        
-        profile = {
+        console.log(`[Auth] Session established via ${source}`, {
+          email: user.email,
           id: user.id,
-          email,
-          display_name: displayName,
-          avatar_url: avatarUrl,
-        };
-        console.log('[Auth] ✅ Created fallback profile:', profile);
-      }
-      
-      const spotifyTokens = extractSpotifyTokens(session);
-      
-      if (spotifyTokens) {
-        tokenManager.setTokens(spotifyTokens);
-      }
-      
-      integrationTokenManager.setUserId(user.id);
-      
-      safeSetState({
-        user,
-        profile,
-        session,
-        isAuthenticated: true,
-        isLoading: false,
-        spotifyTokens,
-      });
-      
-      // Check backend for Spotify tokens if not in session
-      if (!spotifyTokens) {
-        api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
-          .then(response => {
-            if (response.success && response.data && isMounted) {
-              console.log('[Auth] Spotify tokens retrieved from backend');
-              const backendTokens = {
-                accessToken: response.data.accessToken,
-                expiresAt: response.data.expiresAt
-              };
-              tokenManager.setTokens(backendTokens);
-              setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
-            }
-          })
-          .catch(() => {});
-      }
-
-      // Cleanup URL if we have a code and are now signed in
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('code') || params.has('error')) {
-        console.log('[Auth] Cleaning up URL parameters after successful auth');
-        window.history.replaceState(null, '', window.location.pathname);
+          metadata,
+          identityData,
+          identities: user.identities
+        });
+        
+        // Fetch profile from database (may fail due to RLS or missing table)
+        let profile: UserProfile | null = null;
+        try {
+          profile = await fetchProfile(user.id);
+          console.log('[Auth] Profile from DB:', profile);
+        } catch (fetchErr) {
+          console.warn('[Auth] Failed to fetch profile from DB:', fetchErr);
+        }
+        
+        // If no profile exists, create a fallback from user metadata or identity data
+        if (!profile) {
+          console.log('[Auth] ⚠️ No profile found, creating fallback from identity data');
+          
+          // Try multiple sources for display name
+          const displayName = identityData.full_name 
+            || identityData.name 
+            || metadata.full_name 
+            || metadata.name 
+            || metadata.display_name 
+            || user.email?.split('@')[0] 
+            || identityData.email?.split('@')[0]
+            || 'User';
+            
+          // Try multiple sources for avatar
+          const avatarUrl = identityData.picture 
+            || identityData.avatar_url 
+            || metadata.avatar_url 
+            || metadata.picture;
+            
+          // Try multiple sources for email
+          const email = user.email || identityData.email || metadata.email || '';
+          
+          profile = {
+            id: user.id,
+            email,
+            display_name: displayName,
+            avatar_url: avatarUrl,
+          };
+          console.log('[Auth] ✅ Created fallback profile:', profile);
+        }
+        
+        const spotifyTokens = extractSpotifyTokens(session);
+        
+        if (spotifyTokens) {
+          tokenManager.setTokens(spotifyTokens);
+        }
+        
+        integrationTokenManager.setUserId(user.id);
+        
+        console.log('[Auth] ✅ Setting authenticated state with profile:', profile?.display_name);
+        
+        safeSetState({
+          user,
+          profile,
+          session,
+          isAuthenticated: true,
+          isLoading: false,
+          spotifyTokens,
+        });
+      } catch (err: any) {
+        console.error('[Auth] ❌ handleSession failed:', err.message || err);
+        // Still try to set authenticated state with minimal profile
+        safeSetState({
+          user: session.user,
+          profile: {
+            id: session.user.id,
+            email: session.user.email || '',
+            display_name: 'User',
+          },
+          session,
+          isAuthenticated: true,
+          isLoading: false,
+          spotifyTokens: null,
+        });
       }
     };
     
