@@ -326,22 +326,21 @@ const Extensions: React.FC<ExtensionsProps> = ({
                   })}
 
                   {/* Recently Played (Spotify only) */}
-                  {spotifyToken && recentlyPlayed.length > 0 && (
+                  {hasSpotifyAccess && spotifyRecentlyPlayed.length > 0 && (
                     <div className="mt-6 bg-gray-50 border-2 border-gray-200 p-4">
                       <h4 className="font-bold font-mono text-xs uppercase mb-3 flex items-center gap-2">
                         <ICONS.History size={14} /> Recently Played (Spotify)
                       </h4>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {recentlyPlayed.slice(0, 5).map(song => (
+                        {spotifyRecentlyPlayed.slice(0, 5).map(item => (
                           <div 
-                            key={song.id}
-                            onClick={() => onPlaySong(song)}
+                            key={item.played_at}
                             className="flex items-center gap-3 p-2 hover:bg-white border border-transparent hover:border-gray-200 cursor-pointer transition-all"
                           >
-                            <img src={song.coverUrl} alt="" className="w-10 h-10 object-cover" />
+                            <img src={item.track.album.images[0]?.url || ''} alt="" className="w-10 h-10 object-cover" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{song.title}</p>
-                              <p className="text-xs text-gray-500 truncate">{song.artist}</p>
+                              <p className="text-sm font-medium truncate">{item.track.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{item.track.artists.map(a => a.name).join(', ')}</p>
                             </div>
                           </div>
                         ))}
