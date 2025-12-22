@@ -154,24 +154,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Helper to handle successful session
     const handleSession = async (session: Session, source: string) => {
+      const user = session.user;
+      const metadata = user.user_metadata || {};
+      
       console.log(`[Auth] Session established via ${source}`, {
-        email: session.user.email,
-        id: session.user.id,
-        metadata: session.user.user_metadata,
-        identities: session.user.identities
+        email: user.email,
+        id: user.id,
+        metadata,
+        identities: user.identities
       });
       
-      const profile = await fetchProfile(session.user.id);
+      // Fetch profile from database
+      let profile = await fetchProfile(user.id);
+      
+      // If no profile exists, create a fallback from user metadata
+      if (!profile) {
+        console.log('[Auth] No profile found, creating fallback from user metadata');
+        const displayName = metadata.full_name 
+          || metadata.name 
+          || metadata.display_name 
+          || user.email?.split('@')[0] 
+          || 'User';
+        const avatarUrl = metadata.avatar_url || metadata.picture;
+        
+        profile = {
+          id: user.id,
+          email: user.email || metadata.email || '',
+          display_name: displayName,
+          avatar_url: avatarUrl,
+        };
+      }
+      
       const spotifyTokens = extractSpotifyTokens(session);
       
       if (spotifyTokens) {
         tokenManager.setTokens(spotifyTokens);
       }
       
-      integrationTokenManager.setUserId(session.user.id);
+      integrationTokenManager.setUserId(user.id);
       
       safeSetState({
-        user: session.user,
+        user,
         profile,
         session,
         isAuthenticated: true,
