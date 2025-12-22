@@ -78,8 +78,13 @@ export interface SpotifyDataState {
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
+import api from '../utils/apiClient';
+
 export function useSpotifyData() {
-  const { spotifyTokens, hasSpotifyAccess, refreshSpotifyToken } = useAuth();
+  const { spotifyTokens, hasSpotifyAccess, refreshSpotifyToken, user, isAuthenticated } = useAuth();
+  
+  // Local token state - can come from AuthContext OR backend
+  const [localToken, setLocalToken] = useState<{ accessToken: string; expiresAt: number | null } | null>(null);
   
   const [state, setState] = useState<SpotifyDataState>({
     recentlyPlayed: [],
@@ -92,27 +97,63 @@ export function useSpotifyData() {
     tokenExpiresAt: null,
   });
 
-  // Track token expiry time (for display purposes only)
-  // NOTE: Supabase does NOT refresh Spotify provider tokens - they expire after 1 hour
-  // Users must re-authenticate via Spotify OAuth when the token expires
+  // Fetch token from backend if not available from AuthContext
   useEffect(() => {
-    if (spotifyTokens?.expiresAt) {
-      setState(prev => ({ ...prev, tokenExpiresAt: spotifyTokens.expiresAt! }));
+    const fetchBackendToken = async () => {
+      if (!isAuthenticated || !user?.id) return;
+      
+      // If AuthContext has tokens, use those
+      if (spotifyTokens?.accessToken) {
+        setLocalToken({
+          accessToken: spotifyTokens.accessToken,
+          expiresAt: spotifyTokens.expiresAt || null,
+        });
+        return;
+      }
+      
+      // Otherwise, try to fetch from backend (user_integrations table)
+      console.log('[SpotifyData] Fetching token from backend...');
+      try {
+        const response = await api.get(`/auth/spotify/token?user_id=${user.id}`);
+        if (response.success && response.data?.accessToken) {
+          console.log('[SpotifyData] Got token from backend');
+          setLocalToken({
+            accessToken: response.data.accessToken,
+            expiresAt: response.data.expiresAt || null,
+          });
+        } else {
+          console.log('[SpotifyData] No token from backend:', response.error);
+          setLocalToken(null);
+        }
+      } catch (err) {
+        console.warn('[SpotifyData] Backend token fetch failed:', err);
+        setLocalToken(null);
+      }
+    };
+
+    fetchBackendToken();
+  }, [isAuthenticated, user?.id, spotifyTokens]);
+
+
+  // Track token expiry time
+  useEffect(() => {
+    if (localToken?.expiresAt) {
+      setState(prev => ({ ...prev, tokenExpiresAt: localToken.expiresAt! }));
       
       // Log expiry info
       const now = Date.now();
-      const timeLeft = spotifyTokens.expiresAt - now;
+      const timeLeft = localToken.expiresAt - now;
       if (timeLeft > 0) {
         console.log(`[SpotifyData] Token expires in ${Math.round(timeLeft / 1000 / 60)} minutes`);
       } else {
         console.warn('[SpotifyData] Token is already expired');
       }
     }
-  }, [spotifyTokens?.expiresAt]);
+  }, [localToken?.expiresAt]);
 
   // Clear all data when tokens are removed (disconnect)
   useEffect(() => {
-    if (!spotifyTokens) {
+    if (!localToken) {
       console.log('[SpotifyData] Tokens cleared, resetting all data');
       setState({
         recentlyPlayed: [],
@@ -125,7 +166,7 @@ export function useSpotifyData() {
         tokenExpiresAt: null,
       });
     }
-  }, [spotifyTokens]);
+  }, [localToken]);
 
 
   /**
@@ -135,16 +176,14 @@ export function useSpotifyData() {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T | null> => {
-    if (!spotifyTokens?.accessToken) {
+    if (!localToken?.accessToken) {
       console.warn('[SpotifyData] No access token available');
       return null;
     }
 
     // Check if token is expired before making the call
-    if (spotifyTokens.expiresAt && Date.now() > spotifyTokens.expiresAt) {
+    if (localToken.expiresAt && Date.now() > localToken.expiresAt) {
       console.warn('[SpotifyData] Token is expired, skipping API call');
-      // Note: Supabase does NOT refresh Spotify provider tokens, so don't attempt
-      // The user needs to re-authenticate with Spotify  
       setState(prev => ({ ...prev, error: 'Spotify session expired. Please reconnect Spotify.' }));
       return null;
     }
@@ -153,13 +192,13 @@ export function useSpotifyData() {
       const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
         ...options,
         headers: {
-          'Authorization': `Bearer ${spotifyTokens.accessToken}`,
+          'Authorization': `Bearer ${localToken.accessToken}`,
           'Content-Type': 'application/json',
           ...options.headers,
         },
       });
 
-      // Handle token expiration - don't retry, Supabase can't refresh provider tokens
+      // Handle token expiration
       if (response.status === 401) {
         console.warn('[SpotifyData] Received 401 - Spotify token invalid/expired');
         setState(prev => ({ ...prev, error: 'Spotify session expired. Please reconnect Spotify.' }));
@@ -175,7 +214,7 @@ export function useSpotifyData() {
       console.error('[SpotifyData] API error:', error);
       throw error;
     }
-  }, [spotifyTokens]);
+  }, [localToken]);
 
 
   /**
@@ -261,7 +300,7 @@ export function useSpotifyData() {
    * Load all Spotify data
    */
   const loadAllData = useCallback(async () => {
-    if (!hasSpotifyAccess) {
+    if (!localToken?.accessToken) {
       setState(prev => ({ ...prev, isLoading: false, error: 'Not connected to Spotify' }));
       return;
     }
@@ -302,14 +341,14 @@ export function useSpotifyData() {
         error: error.message || 'Failed to load Spotify data',
       }));
     }
-  }, [hasSpotifyAccess, fetchRecentlyPlayed, fetchTopTracks, fetchTopArtists, fetchPlaylists, fetchCurrentlyPlaying]);
+  }, [localToken, fetchRecentlyPlayed, fetchTopTracks, fetchTopArtists, fetchPlaylists, fetchCurrentlyPlaying]);
 
   // Load data when Spotify access becomes available
   useEffect(() => {
-    if (hasSpotifyAccess) {
+    if (localToken?.accessToken) {
       loadAllData();
     }
-  }, [hasSpotifyAccess, loadAllData]);
+  }, [localToken, loadAllData]);
 
   // Calculate time until token expires (for UI display if needed)
   const getTokenExpiryInfo = useCallback(() => {
@@ -324,9 +363,12 @@ export function useSpotifyData() {
     };
   }, [state.tokenExpiresAt]);
 
+  // Computed value for hasSpotifyAccess based on localToken
+  const hasSpotifyAccessComputed = !!localToken?.accessToken;
+
   return {
     ...state,
-    hasSpotifyAccess,
+    hasSpotifyAccess: hasSpotifyAccessComputed,
     // Individual fetch methods for manual refresh
     fetchRecentlyPlayed,
     fetchTopTracks,
