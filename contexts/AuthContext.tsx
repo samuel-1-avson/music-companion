@@ -189,6 +189,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           })
           .catch(() => {});
       }
+
+      // Cleanup URL if we have a code and are now signed in
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('code') || params.has('error')) {
+        console.log('[Auth] Cleaning up URL parameters after successful auth');
+        window.history.replaceState(null, '', window.location.pathname);
+      }
     };
     
     const initializeAuth = async () => {
