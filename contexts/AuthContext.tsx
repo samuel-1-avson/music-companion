@@ -143,50 +143,78 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Initialize auth state
   useEffect(() => {
-    // Check if this is an OAuth callback (has access_token in URL hash)
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const isOAuthCallback = hashParams.has('access_token');
-    
-    if (isOAuthCallback) {
-      console.log('[Auth] Detected OAuth callback, waiting for session...');
-    }
-    
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log('[Auth] Initial session check:', session ? 'Found' : 'None');
+    const initializeAuth = async () => {
+      // Check if this is an OAuth callback (has access_token in URL hash)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const isOAuthCallback = !!accessToken;
+      
+      if (isOAuthCallback) {
+        console.log('[Auth] OAuth callback detected with tokens in URL');
+        
+        // Try to set session manually from URL tokens
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken!,
+            refresh_token: refreshToken || '',
+          });
+          
+          if (error) {
+            console.error('[Auth] Failed to set session from URL tokens:', error);
+          } else if (data.session) {
+            console.log('[Auth] Session set successfully from URL tokens');
+            const profile = await fetchProfile(data.session.user.id);
+            const spotifyTokens = extractSpotifyTokens(data.session);
+            
+            integrationTokenManager.setUserId(data.session.user.id);
+            
+            setState({
+              user: data.session.user,
+              profile,
+              session: data.session,
+              isAuthenticated: true,
+              isLoading: false,
+              spotifyTokens,
+            });
+            
+            // Clean up URL hash
+            window.history.replaceState(null, '', window.location.pathname);
+            return; // Don't continue to getSession
+          }
+        } catch (e) {
+          console.error('[Auth] Error setting session:', e);
+        }
+      }
+      
+      // Normal session check
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[Auth] Session check:', session ? `Found (${session.user.email})` : 'None');
       
       if (session?.user) {
         const profile = await fetchProfile(session.user.id);
         const spotifyTokens = extractSpotifyTokens(session);
         
-        // Sync to TokenManager for proactive refresh
         if (spotifyTokens) {
           tokenManager.setTokens(spotifyTokens);
-          console.log('[Auth] Spotify connected via OAuth, synced to TokenManager');
+          console.log('[Auth] Spotify connected via OAuth');
         } else {
-          // If no session token, check if we have one in backend (from Connect flow)
-          try {
-             // We can't use await here nicely inside useEffect without IIFE, 
-             // but we can start the promise.
-             api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
-               .then(response => {
-                 if (response.success && response.data) {
-                   console.log('[Auth] Spotify tokens retrieved from backend');
-                   const backendTokens = {
-                     accessToken: response.data.accessToken,
-                     expiresAt: response.data.expiresAt
-                   };
-                   tokenManager.setTokens(backendTokens);
-                   setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
-                 }
-               })
-               .catch(err => console.warn('[Auth] No backend Spotify token found:', err));
-          } catch (e) {
-            // Ignore
-          }
+          // Check backend for Spotify tokens
+          api.get<{ accessToken: string; expiresAt?: number }>(`/auth/spotify/token?user_id=${session.user.id}`)
+            .then(response => {
+              if (response.success && response.data) {
+                console.log('[Auth] Spotify tokens retrieved from backend');
+                const backendTokens = {
+                  accessToken: response.data.accessToken,
+                  expiresAt: response.data.expiresAt
+                };
+                tokenManager.setTokens(backendTokens);
+                setState(prev => ({ ...prev, spotifyTokens: backendTokens }));
+              }
+            })
+            .catch(() => {});
         }
         
-        // Initialize multi-provider token manager for Discord/YouTube refresh
         integrationTokenManager.setUserId(session.user.id);
         
         setState({
@@ -197,15 +225,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           spotifyTokens,
         });
-        
-        // Clean up URL hash after successful auth (remove tokens from URL)
-        if (isOAuthCallback) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
       } else {
         setState(prev => ({ ...prev, isLoading: false }));
       }
-    });
+    };
+    
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
