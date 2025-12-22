@@ -218,7 +218,31 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
     }
   }
 
-  console.log('[YouTube Search] ALL YouTube sources failed - no results');
+  console.log('[YouTube Search] ALL YouTube sources failed - falling back to iTunes');
+  
+  // Final fallback: Use iTunes search (reliable, no API key needed)
+  try {
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=${limit}`;
+    const itunesResponse = await axios.get(itunesUrl, { timeout: 8000 });
+    
+    if (itunesResponse.data?.results?.length > 0) {
+      console.log(`[YouTube Search] iTunes FALLBACK SUCCESS: ${itunesResponse.data.results.length} results`);
+      return itunesResponse.data.results.map((track: any) => ({
+        id: `itunes-${track.trackId}`,
+        title: track.trackName,
+        artist: track.artistName,
+        album: track.collectionName || 'iTunes',
+        duration: formatDuration(Math.floor(track.trackTimeMillis / 1000)),
+        coverUrl: track.artworkUrl100?.replace('100x100', '400x400') || '',
+        mood: 'iTunes',
+        previewUrl: track.previewUrl,
+        externalUrl: track.trackViewUrl
+      }));
+    }
+  } catch (e: any) {
+    console.log('[YouTube Search] iTunes fallback also failed:', e.message);
+  }
+  
   return [];
 }
 
