@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+
   /* CLASSIC THEME (Default) */
   --bg-main: #fcfbf9;
   --bg-card: #ffffff;
