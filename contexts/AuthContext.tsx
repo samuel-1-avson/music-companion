@@ -166,10 +166,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Fetch profile from database
       let profile = await fetchProfile(user.id);
+      console.log('[Auth] Profile from DB:', profile);
       
       // If no profile exists, create a fallback from user metadata
       if (!profile) {
-        console.log('[Auth] No profile found, creating fallback from user metadata');
+        console.log('[Auth] ⚠️ No profile found, creating fallback from user metadata:', metadata);
         const displayName = metadata.full_name 
           || metadata.name 
           || metadata.display_name 
@@ -183,6 +184,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           display_name: displayName,
           avatar_url: avatarUrl,
         };
+        console.log('[Auth] ✅ Created fallback profile:', profile);
       }
       
       const spotifyTokens = extractSpotifyTokens(session);
