@@ -62,6 +62,18 @@ const ShareButton: React.FC<ShareButtonProps> = ({
     setShowMenu(false);
   };
 
+  const handleFacebookShare = () => {
+    const url = encodeURIComponent(generateShareUrl());
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank', 'width=600,height=400');
+    setShowMenu(false);
+  };
+
+  const handleWhatsAppShare = () => {
+    const text = encodeURIComponent(`${generateShareText()}\n\n${generateShareUrl()}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+    setShowMenu(false);
+  };
+
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
@@ -96,10 +108,10 @@ const ShareButton: React.FC<ShareButtonProps> = ({
           />
           
           {/* Menu */}
-          <div className="absolute bottom-full right-0 mb-2 bg-[var(--bg-card)] border-2 border-theme shadow-retro min-w-[180px] z-50">
+          <div className="absolute bottom-full right-0 mb-2 bg-[var(--bg-card)] border-2 border-theme shadow-retro min-w-[200px] z-50">
             <div className="p-2 border-b border-theme">
               <p className="text-xs font-mono font-bold uppercase text-[var(--text-muted)]">
-                Share
+                📤 Share
               </p>
             </div>
             
@@ -108,38 +120,59 @@ const ShareButton: React.FC<ShareButtonProps> = ({
               {'share' in navigator && (
                 <button
                   onClick={handleNativeShare}
-                  className="w-full flex items-center gap-2 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+                  className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
                 >
-                  <ICONS.ExternalLink size={14} />
+                  <ICONS.ExternalLink size={16} className="text-[var(--primary)]" />
                   <span className="text-sm font-mono">Share...</span>
                 </button>
               )}
               
-              {/* Copy Link */}
+              {/* Separator */}
+              <div className="border-t border-theme my-1" />
+              
+              {/* Social Platforms */}
+              <button
+                onClick={handleTwitterShare}
+                className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+              >
+                <span className="w-4 h-4 flex items-center justify-center text-sm font-bold">𝕏</span>
+                <span className="text-sm font-mono">Post on X</span>
+              </button>
+              
+              <button
+                onClick={handleFacebookShare}
+                className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+              >
+                <span className="w-4 h-4 flex items-center justify-center text-sm text-blue-500">f</span>
+                <span className="text-sm font-mono">Facebook</span>
+              </button>
+              
+              <button
+                onClick={handleWhatsAppShare}
+                className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+              >
+                <span className="w-4 h-4 flex items-center justify-center text-sm text-green-500">📱</span>
+                <span className="text-sm font-mono">WhatsApp</span>
+              </button>
+              
+              {/* Separator */}
+              <div className="border-t border-theme my-1" />
+              
+              {/* Copy Options */}
               <button
                 onClick={handleCopyLink}
-                className="w-full flex items-center gap-2 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+                className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
               >
-                {copied ? <ICONS.Check size={14} className="text-green-500" /> : <ICONS.Link size={14} />}
+                {copied ? <ICONS.Check size={16} className="text-green-500" /> : <ICONS.Link size={16} />}
                 <span className="text-sm font-mono">{copied ? 'Copied!' : 'Copy Link'}</span>
               </button>
               
-              {/* Copy Text */}
               <button
                 onClick={handleCopyText}
-                className="w-full flex items-center gap-2 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
+                className="w-full flex items-center gap-3 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
               >
-                <ICONS.Copy size={14} />
+                <ICONS.Copy size={16} />
                 <span className="text-sm font-mono">Copy Text</span>
-              </button>
-              
-              {/* Twitter/X */}
-              <button
-                onClick={handleTwitterShare}
-                className="w-full flex items-center gap-2 p-2 hover:bg-[var(--bg-hover)] text-left transition-colors"
-              >
-                <span className="text-sm">𝕏</span>
-                <span className="text-sm font-mono">Post on X</span>
               </button>
             </div>
           </div>
@@ -150,3 +183,4 @@ const ShareButton: React.FC<ShareButtonProps> = ({
 };
 
 export default ShareButton;
+

@@ -11,3 +11,6 @@ export { useUserPreferences } from './useUserPreferences';
 export { useCollaborativePlaylists } from './useCollaborativePlaylists';
 export { useIntegrations } from './useIntegrations';
 export { useSpotifyData } from './useSpotifyData';
+export { useAlarm } from './useAlarm';
+export { useAudioEffects } from './useAudioEffects';
+export { useSocial } from './useSocial';
