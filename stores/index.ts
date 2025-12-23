@@ -7,3 +7,4 @@ export { usePlayerStore } from './playerStore';
 export { useUIStore } from './uiStore';
 export { useSettingsStore } from './settingsStore';
 export { useErrorStore } from './errorStore';
+export { useAlarmStore } from './alarmStore';
