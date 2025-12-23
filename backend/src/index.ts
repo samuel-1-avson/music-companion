@@ -20,6 +20,7 @@ import developerRoutes from './routes/developer.js';
 import webhookRoutes from './routes/webhooks.js';
 import downloadsRoutes from './routes/downloads.js';
 import telegramRoutes from './routes/telegram.js';
+import cookiesRoutes from './routes/cookies.js';
 
 // Import middleware
 import { authRateLimit, aiRateLimit, downloadRateLimit, searchRateLimit, generalRateLimit } from './middleware/rateLimitMiddleware.js';
@@ -108,6 +109,7 @@ app.use('/api/dev', generalRateLimit, developerRoutes);
 app.use('/api/webhooks', generalRateLimit, webhookRoutes);
 app.use('/api/downloads', generalRateLimit, downloadsRoutes);
 app.use('/auth/telegram', authRateLimit, telegramRoutes);
+app.use('/api/cookies', generalRateLimit, cookiesRoutes);
 
 // --- ERROR HANDLING ---
 

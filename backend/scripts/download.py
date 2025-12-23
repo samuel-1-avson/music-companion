@@ -17,10 +17,15 @@ def sanitize_filename(name: str) -> str:
     """Remove or replace characters not allowed in filenames."""
     return re.sub(r'[\\/*?:"<>|]', '', name)
 
-def download_audio(video_id: str, output_dir: str) -> dict:
+def download_audio(video_id: str, output_dir: str, cookies_path: str = None) -> dict:
     """
     Download audio from YouTube video.
     Returns JSON with success status, file path, and metadata.
+    
+    Args:
+        video_id: YouTube video ID
+        output_dir: Directory to save the downloaded file
+        cookies_path: Optional path to cookies.txt file for authentication
     """
     url = f"https://www.youtube.com/watch?v={video_id}"
     
@@ -71,6 +76,11 @@ def download_audio(video_id: str, output_dir: str) -> dict:
         'ignore_no_formats_error': True,  # Try to continue even if some formats fail
         'socket_timeout': 30,
     }
+    
+    # Add cookies if provided (helps bypass 403 errors from datacenter IPs)
+    if cookies_path and os.path.exists(cookies_path):
+        ydl_opts['cookiefile'] = cookies_path
+        print(f"[yt-dlp] Using cookies from: {cookies_path}", file=sys.stderr)
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -144,16 +154,17 @@ def download_audio(video_id: str, output_dir: str) -> dict:
 
 def main():
     if len(sys.argv) < 3:
-        print(json.dumps({'success': False, 'error': 'Usage: download.py <video_id> <output_dir>'}))
+        print(json.dumps({'success': False, 'error': 'Usage: download.py <video_id> <output_dir> [cookies_path]'}))
         sys.exit(1)
     
     video_id = sys.argv[1]
     output_dir = sys.argv[2]
+    cookies_path = sys.argv[3] if len(sys.argv) > 3 else None
     
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
-    result = download_audio(video_id, output_dir)
+    result = download_audio(video_id, output_dir, cookies_path)
     print(json.dumps(result))
 
 if __name__ == '__main__':

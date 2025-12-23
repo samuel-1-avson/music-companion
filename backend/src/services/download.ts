@@ -179,6 +179,13 @@ async function processDownload(id: string, videoId: string, retryCount: number =
     const scriptPath = path.join(process.cwd(), 'scripts', 'download.py');
     const outputDir = db.AUDIO_DIR;
     
+    // Check for YouTube cookies file
+    const cookiesPath = process.env.COOKIES_PATH || '/app/data/youtube_cookies.txt';
+    const hasCookies = fs.existsSync(cookiesPath);
+    if (hasCookies) {
+      console.log(`[Download] Using cookies from: ${cookiesPath}`);
+    }
+    
     // Create cancel handler
     let childProcess: any = null;
     activeDownloads.set(id, { 
@@ -192,8 +199,13 @@ async function processDownload(id: string, videoId: string, retryCount: number =
     
     // Run Python script and get JSON result
     const result = await new Promise<any>((resolve, reject) => {
+      // Build args - pass cookies path as optional 4th argument
+      const args = hasCookies 
+        ? [scriptPath, videoId, outputDir, cookiesPath]
+        : [scriptPath, videoId, outputDir];
+      
       // Use spawn without shell to properly handle paths with spaces
-      childProcess = spawn('python', [scriptPath, videoId, outputDir]);
+      childProcess = spawn('python', args);
       
       let stdout = '';
       let stderr = '';
