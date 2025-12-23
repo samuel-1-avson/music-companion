@@ -26,6 +26,9 @@ import OfflineBanner from './components/OfflineBanner';
 import MiniPlayer from './components/MiniPlayer';
 import AudioVisualizer from './components/AudioVisualizer';
 import ShareButton from './components/ShareButton';
+import DraggableQueue from './components/DraggableQueue';
+import PlayHistory from './components/PlayHistory';
+import PlaylistManager from './components/PlaylistManager';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
