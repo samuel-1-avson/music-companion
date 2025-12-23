@@ -288,13 +288,13 @@ const App: React.FC = () => {
 
   // Sync userName when auth profile changes
   useEffect(() => {
-    if (profile?.display_name) {
+    if (profile?.display_name && profile.display_name !== userName) {
       setUserName(profile.display_name);
-    } else if (!isAuthenticated) {
+    } else if (!isAuthenticated && userName !== 'User') {
       // Reset to default when signed out
       setUserName('User');
     }
-  }, [profile, isAuthenticated]);
+  }, [profile?.display_name, isAuthenticated, userName]);
 
   // Favorites are now loaded by useFavorites hook automatically
 
@@ -642,14 +642,20 @@ const App: React.FC = () => {
   }, []);
 
   // --- PROACTIVE COMPANION LOGIC ---
+  const greetingFetchedRef = useRef(false);
   useEffect(() => {
-      if (!greeting) {
+      // Only generate greeting once on initial load
+      if (!greeting && !greetingFetchedRef.current) {
+          greetingFetchedRef.current = true;
           generateGreeting(userName, moodData).then(result => {
              setGreeting(result);
              setTimeout(() => setGreeting(null), 10000);
+          }).catch(() => {
+             // Ignore greeting generation errors
+             greetingFetchedRef.current = false;
           });
       }
-  }, [userName]); // Regenerate greeting if name changes
+  }, []); // Run only on mount
 
 
   // Wake Word
