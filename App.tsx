@@ -20,6 +20,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import InstallPrompt from './components/InstallPrompt';
 import RadioStation from './components/RadioStation';
 import ArtistGraph from './components/ArtistGraph';
+import LyricsPanel from './components/LyricsPanel';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
@@ -158,6 +159,8 @@ const App: React.FC = () => {
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
 
   // Refs
   const smartDJFetchingRef = useRef(false);
@@ -240,6 +243,19 @@ const App: React.FC = () => {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Track playback time for lyrics sync
+  useEffect(() => {
+    if (!showLyrics) return;
+    
+    const interval = setInterval(() => {
+      if (hiddenAudioRef.current) {
+        setCurrentPlaybackTime(hiddenAudioRef.current.currentTime);
+      }
+    }, 100); // Update every 100ms for smooth lyrics sync
+    
+    return () => clearInterval(interval);
+  }, [showLyrics]);
 
   // Sync userName when auth profile changes
   useEffect(() => {
@@ -434,6 +450,13 @@ const App: React.FC = () => {
         case 'escape':
           setShowKeyboardHelp(false);
           if (currentView === AppView.FOCUS) setCurrentView(AppView.DASHBOARD);
+          break;
+        case 'l':
+          // 'l' is used for Live Mode at different places, use it for Lyrics
+          // Only if not in FOCUS mode (which uses L for Live)
+          if (currentView !== AppView.FOCUS) {
+            setShowLyrics(prev => !prev);
+          }
           break;
         case '1':
           setCurrentView(AppView.DASHBOARD);
@@ -1191,6 +1214,15 @@ const App: React.FC = () => {
                   <p className="font-mono font-bold text-sm truncate">{currentSong.title}</p>
                   <p className="text-xs text-[var(--text-muted)] truncate">{currentSong.artist}</p>
                 </div>
+                {/* Lyrics Button */}
+                <button
+                  onClick={() => setShowLyrics(prev => !prev)}
+                  className={`p-2 rounded transition-colors ${showLyrics ? 'bg-[var(--primary)] text-black' : 'hover:bg-[var(--bg-hover)]'}`}
+                  title="Show Lyrics (L)"
+                >
+                  <ICONS.Lyrics size={16} />
+                </button>
+                
                 {/* Discover Similar Artists Button */}
                 <button
                   onClick={() => {
@@ -1377,6 +1409,16 @@ const App: React.FC = () => {
           seedArtist={artistGraphSeed}
           onPlaySong={playSong}
           onClose={() => setShowArtistGraph(false)}
+        />
+      )}
+      
+      {/* Lyrics Panel */}
+      {showLyrics && (
+        <LyricsPanel
+          currentSong={currentSong}
+          currentTime={currentPlaybackTime}
+          isPlaying={!hiddenAudioRef.current?.paused}
+          onClose={() => setShowLyrics(false)}
         />
       )}
       

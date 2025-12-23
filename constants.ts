@@ -81,7 +81,9 @@ import {
   Rewind,
   ChevronDown,
   ChevronLeft,
-  AlertTriangle
+  AlertTriangle,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 
 export const ICONS = {
@@ -170,6 +172,8 @@ export const ICONS = {
   ChevronDown,
   ChevronLeft,
   AlertTriangle,
+  AlertCircle,
+  Clock,
   X
 };
 
