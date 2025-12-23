@@ -3,8 +3,13 @@ import { ICONS } from '../constants';
 import { useErrorStore, AppError } from '../stores/errorStore';
 
 const ErrorToast: React.FC = () => {
-  const errors = useErrorStore(state => state.getActiveErrors());
+  const allErrors = useErrorStore(state => state.errors);
   const dismissError = useErrorStore(state => state.dismissError);
+
+  const errors = React.useMemo(() => 
+    allErrors.filter(e => !e.dismissed), 
+    [allErrors]
+  );
 
   if (errors.length === 0) return null;
 
