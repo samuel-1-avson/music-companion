@@ -47,6 +47,14 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
     }
   }, [isAuthenticated, user?.id]);
 
+  // Refresh cloud downloads when switching to CLOUD tab
+  useEffect(() => {
+    if (activeTab === 'CLOUD' && isAuthenticated && user?.id) {
+      console.log('[CloudDownloads] Tab switched to CLOUD, refreshing...');
+      loadCloudDownloads();
+    }
+  }, [activeTab]);
+
   useEffect(() => {
       if (logEndRef.current) {
           logEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -73,11 +81,20 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
   };
 
   const loadCloudDownloads = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('[CloudDownloads] No user ID, skipping load');
+      return;
+    }
+    console.log('[CloudDownloads] Loading for user:', user.id);
     try {
       const response = await api.get(`/api/downloads/user/${user.id}`);
+      console.log('[CloudDownloads] Response:', response.data);
       if (response.data?.success) {
-        setCloudDownloads(response.data.data.downloads || []);
+        const downloads = response.data.data.downloads || [];
+        console.log('[CloudDownloads] Setting', downloads.length, 'downloads');
+        setCloudDownloads(downloads);
+      } else {
+        console.error('[CloudDownloads] API returned success=false:', response.data);
       }
     } catch (err) {
       console.error('[CloudDownloads] Failed to load:', err);
