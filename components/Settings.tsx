@@ -40,8 +40,13 @@ const Settings: React.FC<SettingsProps> = ({
   const checkCookiesStatus = async () => {
     try {
       const response = await api.get('/api/cookies/youtube/status');
-      if (response.data?.success) {
+      console.log('[Cookies] Status response:', response.data);
+      
+      // Handle both wrapped and direct response formats
+      if (response.data?.success && response.data?.data) {
         setCookiesStatus(response.data.data);
+      } else if (response.data?.configured !== undefined) {
+        setCookiesStatus(response.data);
       }
     } catch (err) {
       console.error('Failed to check cookies status:', err);
@@ -57,16 +62,25 @@ const Settings: React.FC<SettingsProps> = ({
 
     try {
       const content = await file.text();
-      const response = await api.post('/api/cookies/youtube', { cookies: content });
+      console.log('[Cookies] Uploading cookies file...', content.length, 'characters');
       
-      if (response.data?.success) {
+      const response = await api.post('/api/cookies/youtube', { cookies: content });
+      console.log('[Cookies] Upload response:', response.data);
+      
+      // Handle both wrapped and direct response formats
+      if (response.data?.success || response.data?.message?.includes('successfully')) {
         setCookiesMessage({ type: 'success', text: 'YouTube cookies uploaded successfully!' });
         await checkCookiesStatus();
+      } else if (response.data?.error) {
+        setCookiesMessage({ type: 'error', text: response.data.error });
       } else {
-        setCookiesMessage({ type: 'error', text: response.data?.error || 'Upload failed' });
+        // Assume success if we got a response without error
+        setCookiesMessage({ type: 'success', text: 'Cookies uploaded!' });
+        await checkCookiesStatus();
       }
     } catch (err: any) {
-      setCookiesMessage({ type: 'error', text: err.message || 'Upload failed' });
+      console.error('[Cookies] Upload error:', err);
+      setCookiesMessage({ type: 'error', text: err.response?.data?.error || err.message || 'Upload failed' });
     } finally {
       setCookiesLoading(false);
       // Clear file input
