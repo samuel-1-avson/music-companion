@@ -23,6 +23,7 @@ import ArtistGraph from './components/ArtistGraph';
 import LyricsPanel from './components/LyricsPanel';
 import ErrorToast from './components/ErrorToast';
 import OfflineBanner from './components/OfflineBanner';
+import MiniPlayer from './components/MiniPlayer';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
@@ -167,6 +168,8 @@ const App: React.FC = () => {
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [mainPlayerVisible, setMainPlayerVisible] = useState(true);
+  const mainPlayerRef = useRef<HTMLDivElement>(null);
 
   // Refs
   const smartDJFetchingRef = useRef(false);
@@ -262,6 +265,21 @@ const App: React.FC = () => {
     
     return () => clearInterval(interval);
   }, [showLyrics]);
+
+  // Track main player visibility for mini player
+  useEffect(() => {
+    if (!mainPlayerRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setMainPlayerVisible(entry.isIntersecting);
+      },
+      { threshold: 0.5 }
+    );
+    
+    observer.observe(mainPlayerRef.current);
+    return () => observer.disconnect();
+  }, [currentSong]);
 
   // Sync userName when auth profile changes
   useEffect(() => {
@@ -1207,7 +1225,10 @@ const App: React.FC = () => {
 
         {/* Floating Playback Control Bar */}
         {currentSong && currentView !== AppView.FOCUS && (
-          <div className="fixed bottom-0 left-64 right-0 bg-[var(--bg-card)] border-t-2 border-theme p-3 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          <div 
+            ref={mainPlayerRef}
+            className="fixed bottom-0 left-64 right-0 bg-[var(--bg-card)] border-t-2 border-theme p-3 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]"
+          >
             <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
               
               {/* Song Info */}
@@ -1433,6 +1454,17 @@ const App: React.FC = () => {
       
       {/* Offline Banner */}
       <OfflineBanner isOffline={isOffline} />
+      
+      {/* Mini Player - shows when main player not visible */}
+      <MiniPlayer
+        currentSong={currentSong}
+        isPlaying={!hiddenAudioRef.current?.paused}
+        onPlayPause={() => hiddenAudioRef.current?.paused ? hiddenAudioRef.current?.play() : hiddenAudioRef.current?.pause()}
+        onNext={handleNext}
+        onPrev={handlePrev}
+        onExpand={() => setMainPlayerVisible(true)}
+        mainPlayerVisible={mainPlayerVisible || currentView === AppView.FOCUS}
+      />
 
 
     </div>
