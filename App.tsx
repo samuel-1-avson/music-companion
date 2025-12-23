@@ -229,6 +229,18 @@ const App: React.FC = () => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const navigateFromURL = useUIStore.getState().navigateFromURL;
+    
+    const handlePopState = () => {
+      navigateFromURL();
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Sync userName when auth profile changes
   useEffect(() => {
     if (profile?.display_name) {
