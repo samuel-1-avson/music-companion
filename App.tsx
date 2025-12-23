@@ -14,6 +14,14 @@ const OfflineLibrary = lazy(() => import('./components/OfflineLibrary'));
 const UserProfile = lazy(() => import('./components/UserProfile'));
 const CollaborativePlaylists = lazy(() => import('./components/CollaborativePlaylists'));
 
+// New Feature Components
+const SmartAlarm = lazy(() => import('./components/SmartAlarm'));
+const ThemeEditor = lazy(() => import('./components/ThemeEditor'));
+const AudioEffectsPanel = lazy(() => import('./components/AudioEffectsPanel'));
+const PodcastBrowser = lazy(() => import('./components/PodcastBrowser'));
+const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
+const SocialHub = lazy(() => import('./components/SocialHub'));
+
 // Non-lazy components (always needed)
 import SentientBackground from './components/SentientBackground';
 import ErrorBoundary from './components/ErrorBoundary';
