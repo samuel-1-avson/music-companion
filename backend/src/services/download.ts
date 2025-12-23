@@ -2,6 +2,7 @@
  * Download Service
  * Core service for downloading audio from YouTube using Python yt-dlp
  * Updated to use async Supabase database
+ * Enhanced with retry logic and error classification
  */
 import path from 'path';
 import fs from 'fs';
@@ -12,11 +13,80 @@ import * as db from './downloadDb.js';
 // Max concurrent downloads
 const MAX_CONCURRENT = 3;
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const BASE_RETRY_DELAY_MS = 2000; // 2 seconds, doubles each retry
+
 // Event emitter for progress updates
 export const downloadEvents = new EventEmitter();
 
 // Active downloads tracker
 const activeDownloads = new Map<string, { cancel: () => void }>();
+
+// Error classification for better user feedback
+interface DownloadError {
+  type: 'rate_limit' | 'bot_detection' | 'unavailable' | 'network' | 'unknown';
+  message: string;
+  retryable: boolean;
+}
+
+function classifyError(errorMsg: string): DownloadError {
+  const lowerError = errorMsg.toLowerCase();
+  
+  if (lowerError.includes('sign in to confirm') || 
+      lowerError.includes('bot') || 
+      lowerError.includes('captcha') ||
+      lowerError.includes('verify')) {
+    return {
+      type: 'bot_detection',
+      message: 'YouTube detected automated access. Try again later.',
+      retryable: true
+    };
+  }
+  
+  if (lowerError.includes('429') || 
+      lowerError.includes('too many requests') ||
+      lowerError.includes('rate limit')) {
+    return {
+      type: 'rate_limit',
+      message: 'Rate limited by YouTube. Retrying with delay...',
+      retryable: true
+    };
+  }
+  
+  if (lowerError.includes('unavailable') || 
+      lowerError.includes('private') ||
+      lowerError.includes('removed') ||
+      lowerError.includes('not found') ||
+      lowerError.includes('copyright')) {
+    return {
+      type: 'unavailable',
+      message: 'Video is unavailable, private, or removed.',
+      retryable: false
+    };
+  }
+  
+  if (lowerError.includes('network') || 
+      lowerError.includes('connection') ||
+      lowerError.includes('timeout')) {
+    return {
+      type: 'network',
+      message: 'Network error. Check your connection.',
+      retryable: true
+    };
+  }
+  
+  return {
+    type: 'unknown',
+    message: errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg,
+    retryable: true
+  };
+}
+
+// Delay helper for retry backoff
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /**
  * Generate unique download ID
@@ -93,16 +163,17 @@ export async function startDownload(videoId: string, metadata: {
 }
 
 /**
- * Process the actual download using Python script (avoids path-with-spaces issues)
+ * Process the actual download using Python script with retry logic
  */
-async function processDownload(id: string, videoId: string): Promise<void> {
+async function processDownload(id: string, videoId: string, retryCount: number = 0): Promise<void> {
   let cancelled = false;
   
   try {
+    const status = retryCount > 0 ? `retrying (${retryCount}/${MAX_RETRIES})` : 'downloading';
     await db.updateDownload(id, { status: 'downloading', progress: 0 });
-    downloadEvents.emit('progress', { id, status: 'downloading', progress: 0 });
+    downloadEvents.emit('progress', { id, status: 'downloading', progress: 0, retry: retryCount });
     
-    console.log(`[Download] Starting download via Python: ${videoId}`);
+    console.log(`[Download] Starting download via Python: ${videoId} (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     
     // Path to Python download script
     const scriptPath = path.join(process.cwd(), 'scripts', 'download.py');
@@ -133,7 +204,10 @@ async function processDownload(id: string, videoId: string): Promise<void> {
       
       childProcess.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
-        console.log(`[Download] Python stderr: ${data.toString()}`);
+        // Only log if not a progress message
+        if (!data.toString().includes('%')) {
+          console.log(`[Download] Python stderr: ${data.toString()}`);
+        }
       });
       
       childProcess.on('close', (code: number) => {
@@ -153,7 +227,7 @@ async function processDownload(id: string, videoId: string): Promise<void> {
           resolve(result);
         } catch (e: any) {
           console.error('[Download] Failed to parse Python output:', stdout, stderr);
-          reject(new Error(`Failed to parse result: ${e.message}`));
+          reject(new Error(`Failed to parse result: ${stderr || e.message}`));
         }
       });
       
@@ -189,16 +263,55 @@ async function processDownload(id: string, videoId: string): Promise<void> {
     if (cancelled) {
       await db.updateDownload(id, { status: 'error', error: 'Cancelled by user' });
       downloadEvents.emit('progress', { id, status: 'error', error: 'Cancelled' });
-    } else {
-      console.error(`[Download] Error for ${videoId}:`, error.message);
-      
-      let errorMsg = error.message || 'Unknown error';
-      if (errorMsg.length > 100) errorMsg = errorMsg.substring(0, 100) + '...';
-      
-      await db.updateDownload(id, { status: 'error', error: errorMsg });
-      downloadEvents.emit('progress', { id, status: 'error', error: errorMsg });
-      console.error(`[Download] Failed: ${videoId}`, errorMsg);
+      activeDownloads.delete(id);
+      return;
     }
+    
+    // Classify the error
+    const classifiedError = classifyError(error.message || 'Unknown error');
+    console.error(`[Download] Error for ${videoId} (type: ${classifiedError.type}):`, classifiedError.message);
+    
+    // Check if we should retry
+    if (classifiedError.retryable && retryCount < MAX_RETRIES) {
+      const delayMs = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount); // Exponential backoff
+      console.log(`[Download] Retrying ${videoId} in ${delayMs}ms (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+      
+      downloadEvents.emit('progress', { 
+        id, 
+        status: 'retrying', 
+        error: classifiedError.message,
+        retry: retryCount + 1,
+        maxRetries: MAX_RETRIES,
+        nextRetryMs: delayMs
+      });
+      
+      await delay(delayMs);
+      
+      // Clean up before retry
+      activeDownloads.delete(id);
+      
+      // Retry
+      return processDownload(id, videoId, retryCount + 1);
+    }
+    
+    // Max retries reached or non-retryable error
+    const finalError = retryCount >= MAX_RETRIES 
+      ? `Failed after ${MAX_RETRIES + 1} attempts: ${classifiedError.message}`
+      : classifiedError.message;
+    
+    await db.updateDownload(id, { 
+      status: 'error', 
+      error: finalError 
+    });
+    downloadEvents.emit('progress', { 
+      id, 
+      status: 'error', 
+      error: finalError,
+      errorType: classifiedError.type,
+      retryable: classifiedError.retryable && retryCount < MAX_RETRIES
+    });
+    console.error(`[Download] Failed permanently: ${videoId}`, finalError);
+    
   } finally {
     activeDownloads.delete(id);
   }

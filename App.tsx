@@ -36,6 +36,13 @@ import { initializeDeveloperApi, dispatchApiEvent } from './services/developerAp
 import { dispatchEvent as dispatchWebhookEvent } from './services/webhookService';
 import { authenticateWithToken as lastfmAuthenticateWithToken } from './services/lastfmService';
 
+// Zustand Stores
+import { usePlayerStore, useUIStore, useSettingsStore, useErrorStore } from './stores';
+
+// React Query
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './hooks/useApiQuery';
+
 // Providers
 import { ToastProvider } from './contexts/ToastContext';
 import { I18nProvider } from './i18n';
@@ -44,12 +51,96 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const App: React.FC = () => {
   const { spotifyTokens, profile, isAuthenticated } = useAuth();
-  const [userName, setUserName] = useState('User');
   
-  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
-  // ... (keep existing state declarations)
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [queue, setQueue] = useState<Song[]>([]);
+  // === ZUSTAND STORES ===
+  // Player Store
+  const currentSong = usePlayerStore(state => state.currentSong);
+  const setCurrentSong = usePlayerStore(state => state.setCurrentSong);
+  const queue = usePlayerStore(state => state.queue);
+  const setQueue = usePlayerStore(state => state.setQueue);
+  const volume = usePlayerStore(state => state.volume);
+  const setVolume = usePlayerStore(state => state.setVolume);
+  const isMuted = usePlayerStore(state => state.isMuted);
+  const toggleMute = usePlayerStore(state => state.toggleMute);
+  const setIsMuted = (muted: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof muted === 'function') {
+      usePlayerStore.setState(state => ({ isMuted: muted(state.isMuted) }));
+    } else {
+      usePlayerStore.setState({ isMuted: muted });
+    }
+  };
+  const playbackSpeed = usePlayerStore(state => state.playbackSpeed);
+  const setPlaybackSpeed = usePlayerStore(state => state.setPlaybackSpeed);
+  const shuffleEnabled = usePlayerStore(state => state.shuffleEnabled);
+  const setShuffleEnabled = (enabled: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof enabled === 'function') {
+      usePlayerStore.setState(state => ({ shuffleEnabled: enabled(state.shuffleEnabled) }));
+    } else {
+      usePlayerStore.setState({ shuffleEnabled: enabled });
+    }
+  };
+  const repeatMode = usePlayerStore(state => state.repeatMode);
+  const setRepeatMode = (mode: 'off' | 'all' | 'one' | ((prev: 'off' | 'all' | 'one') => 'off' | 'all' | 'one')) => {
+    if (typeof mode === 'function') {
+      usePlayerStore.setState(state => ({ repeatMode: mode(state.repeatMode) }));
+    } else {
+      usePlayerStore.setState({ repeatMode: mode });
+    }
+  };
+  const smartDJEnabled = usePlayerStore(state => state.smartDJEnabled);
+  const setSmartDJEnabled = (enabled: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof enabled === 'function') {
+      usePlayerStore.setState(state => ({ smartDJEnabled: enabled(state.smartDJEnabled) }));
+    } else {
+      usePlayerStore.setState({ smartDJEnabled: enabled });
+    }
+  };
+  const isSmartDJLoading = usePlayerStore(state => state.isSmartDJLoading);
+  const setIsSmartDJLoading = usePlayerStore(state => state.setIsSmartDJLoading);
+  const isRadioMode = usePlayerStore(state => state.isRadioMode);
+  const setIsRadioMode = usePlayerStore(state => state.setIsRadioMode);
+  const isDJSpeaking = usePlayerStore(state => state.isDJSpeaking);
+  const setIsDJSpeaking = usePlayerStore(state => state.setIsDJSpeaking);
+  const musicProvider = usePlayerStore(state => state.musicProvider);
+  const setMusicProvider = usePlayerStore(state => state.setMusicProvider);
+  
+  // UI Store
+  const currentView = useUIStore(state => state.currentView);
+  const setCurrentView = useUIStore(state => state.setCurrentView);
+  const theme = useUIStore(state => state.theme);
+  const setTheme = useUIStore(state => state.setTheme);
+  const isSmartTheme = useUIStore(state => state.isSmartTheme);
+  const setIsSmartTheme = useUIStore(state => state.setIsSmartTheme);
+  const showKeyboardHelp = useUIStore(state => state.showKeyboardHelp);
+  const setShowKeyboardHelp = useUIStore(state => state.setShowKeyboardHelp);
+  const showRadio = useUIStore(state => state.showRadio);
+  const setShowRadio = (show: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof show === 'function') {
+      useUIStore.setState(state => ({ showRadio: show(state.showRadio) }));
+    } else {
+      useUIStore.setState({ showRadio: show });
+    }
+  };
+  const showArtistGraph = useUIStore(state => state.showArtistGraph);
+  const setShowArtistGraph = useUIStore(state => state.setShowArtistGraph);
+  const artistGraphSeed = useUIStore(state => state.artistGraphSeed);
+  const setArtistGraphSeed = useUIStore(state => state.setArtistGraphSeed);
+  const errorMessage = useUIStore(state => state.errorMessage);
+  const setErrorMessage = useUIStore(state => state.setErrorMessage);
+  const greeting = useUIStore(state => state.greeting);
+  const setGreeting = useUIStore(state => state.setGreeting);
+  const moodData = useUIStore(state => state.moodData);
+  const setMoodData = useUIStore(state => state.setMoodData);
+  
+  // Settings Store
+  const userName = useSettingsStore(state => state.userName);
+  const setUserName = useSettingsStore(state => state.setUserName);
+  const crossfadeDuration = useSettingsStore(state => state.crossfadeDuration);
+  const setCrossfadeDuration = useSettingsStore(state => state.setCrossfadeDuration);
+  const eqValues = useSettingsStore(state => state.eqValues);
+  const sleepTimerState = useSettingsStore(state => state.sleepTimer);
+  const sleepTimerMinutes = sleepTimerState.minutes;
+  const sleepTimerRemaining = sleepTimerState.remaining;
   
   // Use Supabase-backed favorites hook (falls back to localStorage for guests)
   const { favorites: favoriteSongs, toggleFavorite: toggleFavoriteSupabase, isFavorite } = useFavorites();
@@ -63,69 +154,21 @@ const App: React.FC = () => {
     previewUrl: '',
   })); 
   
+  // Legacy state that still needs local management
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [musicProvider, setMusicProvider] = useState<MusicProvider>('YOUTUBE');
-  const [isRadioMode, setIsRadioMode] = useState(false);
-  const [isDJSpeaking, setIsDJSpeaking] = useState(false);
-  const [moodData, setMoodData] = useState<MoodData[]>([{ time: '08:00', score: 50, label: 'Neutral' }]);
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
 
-  // ... (keep existing state)
-  // --- PHASE 1 QUICK WINS STATE ---
-  // Sleep Timer
-  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
-  const [sleepTimerEnd, setSleepTimerEnd] = useState<number | null>(null);
-  const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number>(0);
-  
-  // Shuffle & Repeat
-  const [shuffleEnabled, setShuffleEnabled] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
-  
-  // Playback Speed
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-  
-  // Volume
-  const [volume, setVolume] = useState(0.75);
-  const [isMuted, setIsMuted] = useState(false);
-
-  // Keyboard Shortcuts Help Modal
-  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
-
-  // --- PHASE 2: CROSSFADE ---
-  const [crossfadeDuration, setCrossfadeDuration] = useState(3); // 0-12 seconds
+  // Refs
+  const smartDJFetchingRef = useRef(false);
   const nextAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCrossfadingRef = useRef(false);
-
-  // --- PHASE 3: SMART DJ MODE ---
-  const [smartDJEnabled, setSmartDJEnabled] = useState(false);
-  const [isSmartDJLoading, setIsSmartDJLoading] = useState(false);
-  const smartDJFetchingRef = useRef(false); // Prevent duplicate fetches
-
-  // --- PHASE 4: RADIO STATIONS ---
-  const [showRadio, setShowRadio] = useState(false);
-
-  // --- PHASE 4: ARTIST GRAPH ---
-  const [showArtistGraph, setShowArtistGraph] = useState(false);
-  const [artistGraphSeed, setArtistGraphSeed] = useState<string>('');
-
-  // Theme State
-  const [theme, setTheme] = useState<Theme>('minimal');
-  const [isSmartTheme, setIsSmartTheme] = useState(true);
-
-  // Proactive Greeting State
-  const [greeting, setGreeting] = useState<{message: string, action: string} | null>(null);
-
-  // Audio Graph State
   const [musicAnalyser, setMusicAnalyser] = useState<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
-  // EQ Nodes: [Low, MidLow, Mid, MidHigh, High]
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
-  const [eqValues, setEqValues] = useState<number[]>([0,0,0,0,0]);
   const sleepTimerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- PERSISTENCE & INIT ---
@@ -284,13 +327,11 @@ const App: React.FC = () => {
       clearInterval(sleepTimerIntervalRef.current);
     }
     const endTime = Date.now() + minutes * 60 * 1000;
-    setSleepTimerMinutes(minutes);
-    setSleepTimerEnd(endTime);
-    setSleepTimerRemaining(minutes * 60);
+    useSettingsStore.getState().startSleepTimer(minutes);
     
     sleepTimerIntervalRef.current = setInterval(() => {
       const remaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-      setSleepTimerRemaining(remaining);
+      useSettingsStore.getState().updateSleepTimerRemaining(remaining);
       if (remaining <= 0) {
         // Stop playback
         if (hiddenAudioRef.current) {
@@ -306,9 +347,7 @@ const App: React.FC = () => {
       clearInterval(sleepTimerIntervalRef.current);
       sleepTimerIntervalRef.current = null;
     }
-    setSleepTimerMinutes(null);
-    setSleepTimerEnd(null);
-    setSleepTimerRemaining(0);
+    useSettingsStore.getState().cancelSleepTimer();
   };
 
   // Cleanup sleep timer on unmount
@@ -374,7 +413,7 @@ const App: React.FC = () => {
           break;
         case 'f':
           if (!e.ctrlKey && !e.metaKey) {
-            setCurrentView(prev => prev === AppView.FOCUS ? AppView.DASHBOARD : AppView.FOCUS);
+            setCurrentView(currentView === AppView.FOCUS ? AppView.DASHBOARD : AppView.FOCUS);
           }
           break;
         case '?':
@@ -620,9 +659,7 @@ const App: React.FC = () => {
   }, []);
 
   const setEQBand = (index: number, value: number) => {
-      const newVals = [...eqValues];
-      newVals[index] = value;
-      setEqValues(newVals);
+      useSettingsStore.getState().setEQBand(index, value);
       
       if (eqFiltersRef.current[index]) {
           eqFiltersRef.current[index].gain.value = value;
@@ -1344,13 +1381,15 @@ export default App;
 
 // Wrapped App with providers
 const WrappedApp: React.FC = () => (
-  <I18nProvider>
-    <AuthProvider>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
-    </AuthProvider>
-  </I18nProvider>
+  <QueryClientProvider client={queryClient}>
+    <I18nProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </AuthProvider>
+    </I18nProvider>
+  </QueryClientProvider>
 );
 
 export { WrappedApp };

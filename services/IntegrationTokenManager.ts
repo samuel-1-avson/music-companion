@@ -23,6 +23,10 @@ type TokenListener = (provider: OAuthProvider, event: TokenEventType) => void;
 // Refresh margin - refresh 5 minutes before expiry
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
+// Retry configuration
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_BASE_MS = 1000;
+
 // Refresh endpoints by provider (user-ID based - fetch token from DB server-side)
 const REFRESH_ENDPOINTS: Record<OAuthProvider, string> = {
   spotify: '/auth/spotify/refresh-by-user',
@@ -35,6 +39,7 @@ class IntegrationTokenManagerClass {
   private tokens: Map<OAuthProvider, ProviderTokens> = new Map();
   private refreshPromises: Map<OAuthProvider, Promise<ProviderTokens | null>> = new Map();
   private refreshTimers: Map<OAuthProvider, number> = new Map();
+  private failureCounts: Map<OAuthProvider, number> = new Map(); // Track consecutive failures
   private listeners: Set<TokenListener> = new Set();
   private userId: string | null = null;
 
@@ -154,16 +159,16 @@ class IntegrationTokenManagerClass {
   }
 
   /**
-   * Perform the actual token refresh via backend
+   * Perform the actual token refresh via backend with retry logic
    */
-  private async doRefresh(provider: OAuthProvider, endpoint: string): Promise<ProviderTokens | null> {
+  private async doRefresh(provider: OAuthProvider, endpoint: string, attempt: number = 1): Promise<ProviderTokens | null> {
     if (!this.userId) {
       console.warn(`[IntegrationTokenManager] No user ID for ${provider} refresh`);
       return null;
     }
 
     try {
-      console.log(`[IntegrationTokenManager] Refreshing ${provider} token...`);
+      console.log(`[IntegrationTokenManager] Refreshing ${provider} token (attempt ${attempt}/${MAX_RETRY_ATTEMPTS})...`);
 
       // Backend handles decryption and makes the refresh call
       const response = await api.post(`${endpoint}`, {
@@ -171,10 +176,11 @@ class IntegrationTokenManagerClass {
       });
 
       if (!response.success) {
-        console.error(`[IntegrationTokenManager] ${provider} refresh failed:`, response.error);
-        this.emit(provider, 'REFRESH_FAILED');
-        return null;
+        throw new Error(response.error || 'Refresh failed');
       }
+
+      // Reset failure count on success
+      this.failureCounts.set(provider, 0);
 
       // Update expiry tracking
       const expiresIn = response.data?.expires_in || 3600;
@@ -190,11 +196,33 @@ class IntegrationTokenManagerClass {
       this.scheduleRefresh(provider, expiresAt);
       this.emit(provider, 'TOKEN_UPDATED');
 
-      console.log(`[IntegrationTokenManager] ${provider} token refreshed`);
+      console.log(`[IntegrationTokenManager] ${provider} token refreshed successfully`);
       return tokens;
 
     } catch (error: any) {
-      console.error(`[IntegrationTokenManager] ${provider} refresh error:`, error.message);
+      console.error(`[IntegrationTokenManager] ${provider} refresh failed (attempt ${attempt}):`, error.message);
+      
+      // Retry with exponential backoff
+      if (attempt < MAX_RETRY_ATTEMPTS) {
+        const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
+        console.log(`[IntegrationTokenManager] Retrying ${provider} refresh in ${delay}ms...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.doRefresh(provider, endpoint, attempt + 1);
+      }
+      
+      // All retries exhausted - track failure count
+      const currentFailures = (this.failureCounts.get(provider) || 0) + 1;
+      this.failureCounts.set(provider, currentFailures);
+      
+      console.error(`[IntegrationTokenManager] ${provider} refresh failed after ${MAX_RETRY_ATTEMPTS} attempts (consecutive failures: ${currentFailures})`);
+      
+      // If too many consecutive refresh failures, clear the token to prevent loops
+      if (currentFailures >= 3) {
+        console.warn(`[IntegrationTokenManager] Too many failures for ${provider}, clearing token`);
+        this.clear(provider);
+      }
+      
       this.emit(provider, 'REFRESH_FAILED');
       return null;
     }
@@ -249,6 +277,7 @@ class IntegrationTokenManagerClass {
     this.refreshTimers.delete(provider);
     this.tokens.delete(provider);
     this.refreshPromises.delete(provider);
+    this.failureCounts.delete(provider);
   }
 }
 
