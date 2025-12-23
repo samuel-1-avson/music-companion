@@ -9,7 +9,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
-import { Song, MusicProvider, SpotifyProfile } from '../types';
+import type { Song, MusicProvider as MusicProviderType, SpotifyProfile } from '../types';
 import { getYouTubeAudioStream } from '../services/musicService';
 import { addToHistoryDB } from '../utils/db';
 
@@ -17,7 +17,7 @@ import { addToHistoryDB } from '../utils/db';
 interface MusicState {
   currentSong: Song | null;
   queue: Song[];
-  musicProvider: MusicProvider;
+  musicProvider: MusicProviderType;
   spotifyToken: string | null;
   spotifyProfile: SpotifyProfile | null;
   isRadioMode: boolean;
@@ -50,7 +50,7 @@ interface MusicContextType extends MusicState {
   toggleRadioMode: () => void;
   
   // Provider controls
-  setMusicProvider: (provider: MusicProvider) => void;
+  setMusicProvider: (provider: MusicProviderType) => void;
   setSpotifyToken: (token: string | null) => void;
   setSpotifyProfile: (profile: SpotifyProfile | null) => void;
   disconnectSpotify: () => void;
@@ -91,7 +91,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const [isRadioMode, setIsRadioMode] = useState(false);
   
   // Provider state
-  const [musicProvider, setMusicProvider] = useState<MusicProvider>('YOUTUBE');
+  const [musicProvider, setMusicProvider] = useState<MusicProviderType>('YOUTUBE');
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
   
@@ -117,16 +117,43 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       setQueue(prev => [...prev, song]);
     }
     
-    // Fetch stream URL if needed (for YouTube)
+    // Fetch stream URL if needed
     let songToPlay = song;
-    if (!song.previewUrl && musicProvider === 'YOUTUBE') {
-      try {
-        const stream = await getYouTubeAudioStream(song.id);
-        if (stream?.streamUrl) {
-          songToPlay = { ...song, previewUrl: stream.streamUrl };
+    
+    // If song already has a playable URL (previewUrl or fileBlob), use it
+    if (!song.previewUrl && !song.fileBlob) {
+      // For YouTube videos, get the audio stream
+      if (musicProvider === 'YOUTUBE' && song.id) {
+        try {
+          console.log('[Music] Fetching YouTube stream for:', song.id);
+          const streamUrl = await getYouTubeAudioStream(song.id);
+          if (streamUrl) {
+            songToPlay = { ...song, previewUrl: streamUrl };
+            console.log('[Music] Got YouTube stream URL');
+          } else {
+            console.warn('[Music] No stream URL returned for YouTube video');
+          }
+        } catch (error) {
+          console.error('[Music] Failed to get YouTube stream:', error);
         }
-      } catch (error) {
-        console.error('[Music] Failed to get stream:', error);
+      }
+      // For Spotify tracks without preview, try to find on YouTube by title+artist
+      else if (musicProvider === 'SPOTIFY' && song.title && song.artist) {
+        try {
+          console.log('[Music] Spotify track without preview, searching YouTube for:', song.title, song.artist);
+          // Import searchMusic dynamically to avoid circular dep
+          const { searchMusic } = await import('../services/musicService');
+          const results = await searchMusic(`${song.title} ${song.artist}`);
+          if (results.length > 0 && results[0].videoId) {
+            const streamUrl = await getYouTubeAudioStream(results[0].videoId);
+            if (streamUrl) {
+              songToPlay = { ...song, previewUrl: streamUrl };
+              console.log('[Music] Got YouTube fallback stream for Spotify track');
+            }
+          }
+        } catch (error) {
+          console.error('[Music] Failed to get YouTube fallback for Spotify track:', error);
+        }
       }
     }
     
