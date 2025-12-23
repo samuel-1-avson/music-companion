@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -19,27 +19,40 @@ export function useFavorites() {
   const { user, isAuthenticated } = useAuth();
   const [favorites, setFavorites] = useState<FavoriteSong[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Track if we've initialized to prevent double-loading
+  const initializedRef = useRef(false);
+  const loadingRef = useRef(false);
 
   // Load favorites on mount or auth change
   useEffect(() => {
-    // Clear state immediately when user changes to prevent stale data
-    setFavorites([]);
-    setIsLoading(true);
+    // Prevent duplicate initialization
+    if (loadingRef.current) return;
+    
+    // Clear favorites when user changes (but only if we have some)
+    if (!isAuthenticated && favorites.length > 0) {
+      setFavorites([]);
+    }
 
     if (isAuthenticated && user) {
       loadFavorites();
-    } else {
+    } else if (!isAuthenticated) {
       // Only load localStorage for completely unauthenticated guests
       const stored = localStorage.getItem('music_companion_favorites');
       if (stored) {
         try {
-          setFavorites(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          // Only update if different
+          if (JSON.stringify(parsed) !== JSON.stringify(favorites)) {
+            setFavorites(parsed);
+          }
         } catch (e) {
           console.error('[Favorites] Failed to parse localStorage:', e);
         }
       }
       setIsLoading(false);
     }
+    
+    initializedRef.current = true;
   }, [isAuthenticated, user?.id]); // Trigger on user.id change specifically
 
   // Load favorites from Supabase

@@ -104,10 +104,13 @@ export function useSpotifyData() {
       
       // If AuthContext has tokens, use those
       if (spotifyTokens?.accessToken) {
-        setLocalToken({
-          accessToken: spotifyTokens.accessToken,
-          expiresAt: spotifyTokens.expiresAt || null,
-        });
+        // Only update if changed prevents infinite loops
+        if (localToken?.accessToken !== spotifyTokens.accessToken) {
+            setLocalToken({
+              accessToken: spotifyTokens.accessToken,
+              expiresAt: spotifyTokens.expiresAt || null,
+            });
+        }
         return;
       }
       
@@ -116,23 +119,29 @@ export function useSpotifyData() {
       try {
         const response = await api.get(`/auth/spotify/token?user_id=${user.id}`);
         if (response.success && response.data?.accessToken) {
-          console.log('[SpotifyData] Got token from backend');
-          setLocalToken({
-            accessToken: response.data.accessToken,
-            expiresAt: response.data.expiresAt || null,
-          });
+          // Only update if changed
+          if (localToken?.accessToken !== response.data.accessToken) {
+              console.log('[SpotifyData] Got token from backend');
+              setLocalToken({
+                accessToken: response.data.accessToken,
+                expiresAt: response.data.expiresAt || null,
+              });
+          }
         } else {
-          console.log('[SpotifyData] No token from backend:', response.error);
-          setLocalToken(null);
+          // Only update if we had a token before
+          if (localToken !== null) {
+              console.log('[SpotifyData] No token from backend:', response.error);
+              setLocalToken(null);
+          }
         }
       } catch (err) {
         console.warn('[SpotifyData] Backend token fetch failed:', err);
-        setLocalToken(null);
+        if (localToken !== null) setLocalToken(null);
       }
     };
 
     fetchBackendToken();
-  }, [isAuthenticated, user?.id, spotifyTokens]);
+  }, [isAuthenticated, user?.id, spotifyTokens?.accessToken, localToken?.accessToken]); // Depend on primitives
 
 
   // Track token expiry time

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,27 +22,41 @@ export function useHistory() {
   const { user, isAuthenticated } = useAuth();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Track initialization to prevent double-loading
+  const initializedRef = useRef(false);
+  const loadingRef = useRef(false);
 
   // Load history on mount or auth change
   useEffect(() => {
-    // Clear state immediately when user changes to prevent stale data
-    setHistory([]);
-    setIsLoading(true);
+    // Prevent duplicate initialization
+    if (loadingRef.current) return;
+
+    // Clear history when user changes (but only if we have some)
+    if (!isAuthenticated && history.length > 0) {
+      setHistory([]);
+    }
 
     if (isAuthenticated && user) {
       loadHistory();
-    } else {
+    } else if (!isAuthenticated) {
       // Only load localStorage for completely unauthenticated guests
       const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
       if (stored) {
         try {
-          setHistory(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          // Only update if different
+          if (JSON.stringify(parsed) !== JSON.stringify(history)) {
+            setHistory(parsed);
+          }
         } catch (e) {
           console.error('[History] Failed to parse localStorage:', e);
         }
       }
       setIsLoading(false);
     }
+    
+    initializedRef.current = true;
   }, [isAuthenticated, user?.id]); // Trigger on user.id change specifically
 
   // Load history from Supabase
