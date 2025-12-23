@@ -277,7 +277,8 @@ router.delete('/:id', async (req, res) => {
 import * as supabaseStorage from '../services/supabaseStorage.js';
 
 /**
- * Start a cloud download for a specific user
+ * Sync download metadata to user's cloud library (Telegram-style)
+ * Music stays on user's device, only metadata syncs to cloud
  * POST /api/downloads/user/:userId
  */
 router.post('/user/:userId', async (req, res) => {
@@ -299,7 +300,7 @@ router.post('/user/:userId', async (req, res) => {
   }
   
   try {
-    // Check if user already has this download in cloud
+    // Check if user already has this download record
     const existing = await supabaseStorage.hasUserDownload(userId, videoId);
     if (existing) {
       return res.json({
@@ -307,38 +308,45 @@ router.post('/user/:userId', async (req, res) => {
         data: {
           id: existing.id,
           cached: true,
-          cloudUrl: await supabaseStorage.getDownloadUrl(existing.storagePath),
-          message: 'Song already in your cloud library'
+          message: 'Song already in your download history'
         }
       });
     }
     
-    // Start local download first
-    console.log(`[Download Route] Starting cloud download for user ${userId}: ${videoId}`);
-    const result = await downloadService.startDownload(videoId, {
+    // Save metadata record only (no file upload - Telegram-style)
+    // Music files stay on user's device in IndexedDB
+    console.log(`[Download Sync] Saving metadata for user ${userId}: ${videoId} - "${title}"`);
+    
+    const saveResult = await supabaseStorage.saveDownloadMetadata({
+      userId,
+      videoId,
       title,
       artist,
       duration,
-      coverUrl
+      coverUrl,
+      storagePath: '', // No cloud storage - file is on user's device
+      fileSize: 0,
+      status: 'synced' // Just a metadata record
     });
     
-    // After download completes, upload to Supabase Storage
-    // This is done async - we return immediately
-    uploadToCloudAfterDownload(userId, result.id, videoId, { title, artist, duration, coverUrl });
+    if (!saveResult.success) {
+      throw new Error(saveResult.error || 'Failed to save metadata');
+    }
+    
+    console.log(`[Download Sync] ✅ Metadata saved: ${videoId}, id: ${saveResult.id}`);
     
     res.json({
       success: true,
       data: {
-        id: result.id,
-        cached: result.cached,
-        message: result.cached ? 'Uploading to cloud...' : 'Download started, will sync to cloud'
+        id: saveResult.id,
+        message: 'Download synced to your library'
       }
     });
   } catch (error: any) {
-    console.error(`[Download Route] Cloud download ERROR:`, error);
+    console.error(`[Download Sync] ERROR:`, error);
     res.status(500).json({ 
       success: false, 
-      error: error.message || 'Failed to start cloud download' 
+      error: error.message || 'Failed to sync download' 
     });
   }
 });

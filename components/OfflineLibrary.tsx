@@ -850,7 +850,7 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
               </div>
           )}
 
-          {/* --- CLOUD DOWNLOADS VIEW --- */}
+          {/* --- CLOUD DOWNLOADS VIEW (Telegram-style: metadata only) --- */}
           {activeTab === 'CLOUD' && (
               <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   
@@ -860,7 +860,7 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                       <div>
                           <h4 className="font-bold text-[var(--text-main)]">Cloud Library</h4>
                           <p className="text-xs text-[var(--text-muted)]">
-                              Downloads synced to your cloud storage. Available on any device when you sign in.
+                            Your download history synced across devices. Click "Re-download" to save songs on this device.
                           </p>
                       </div>
                   </div>
@@ -881,29 +881,10 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                       {cloudDownloads.map((record: any) => (
                           <div 
                               key={record.id} 
-                              onClick={() => {
-                                  if (record.cloudUrl) {
-                                      const song: Song = {
-                                          id: `cloud-${record.id}`,
-                                          title: record.title,
-                                          artist: record.artist || 'Unknown Artist',
-                                          album: 'Cloud Library',
-                                          duration: record.duration || '0:00',
-                                          coverUrl: record.coverUrl || 'https://picsum.photos/200/200?grayscale',
-                                          mood: 'Cloud',
-                                          isOffline: false,
-                                          externalUrl: record.cloudUrl
-                                      };
-                                      onPlaySong(song);
-                                  }
-                              }}
-                              className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 flex gap-3 hover:shadow-lg transition-all cursor-pointer relative overflow-hidden"
+                              className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 flex gap-3 hover:shadow-lg transition-all relative overflow-hidden"
                           >
                               <div className="w-20 h-20 rounded-xl overflow-hidden relative flex-shrink-0 bg-gray-200">
                                   <img src={record.coverUrl || 'https://picsum.photos/200/200?grayscale'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="art" />
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                      <ICONS.Play size={24} className="text-white fill-current" />
-                                  </div>
                               </div>
                               
                               <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -911,13 +892,30 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                                   <p className="text-xs text-[var(--text-muted)] truncate mb-2">{record.artist || 'Unknown'}</p>
                                   <div className="flex items-center gap-2">
                                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 border border-purple-500/30">
-                                          CLOUD
+                                          {record.status === 'synced' ? 'SYNCED' : 'CLOUD'}
                                       </span>
                                       <span className="text-[10px] font-mono text-[var(--text-muted)] opacity-60">
-                                          {(record.fileSize / 1024 / 1024).toFixed(1)} MB
+                                          {record.duration || '0:00'}
                                       </span>
                                   </div>
                               </div>
+
+                              {/* Re-download button (Telegram-style) */}
+                              <button 
+                                  onClick={() => {
+                                      // Switch to DOWNLOAD tab and pre-search for this song
+                                      setSearchQuery(`${record.title} ${record.artist || ''}`);
+                                      setActiveTab('DOWNLOADER');
+                                      // Auto-search after a short delay
+                                      setTimeout(() => {
+                                          performSearch();
+                                      }, 100);
+                                  }}
+                                  className="absolute top-2 right-2 p-2 text-purple-500 hover:bg-purple-500/20 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                                  title="Re-download to this device"
+                              >
+                                  <ICONS.DownloadCloud size={16} />
+                              </button>
                           </div>
                       ))}
                   </div>

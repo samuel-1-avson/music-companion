@@ -27,7 +27,7 @@ interface DownloadMetadata {
   coverUrl?: string;
   storagePath: string;
   fileSize: number;
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'synced'; // 'synced' = metadata only, no file
   error?: string;
 }
 
@@ -155,7 +155,7 @@ export async function getUserDownloads(userId: string): Promise<DownloadMetadata
       .from('user_downloads')
       .select('*')
       .eq('user_id', userId)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'synced']) // Include both uploaded files and metadata-only records
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -281,7 +281,7 @@ export async function hasUserDownload(
       .select('*')
       .eq('user_id', userId)
       .eq('video_id', videoId)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'synced']) // Include both types
       .single();
 
     if (error || !data) {
