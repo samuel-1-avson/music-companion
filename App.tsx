@@ -24,6 +24,8 @@ import LyricsPanel from './components/LyricsPanel';
 import ErrorToast from './components/ErrorToast';
 import OfflineBanner from './components/OfflineBanner';
 import MiniPlayer from './components/MiniPlayer';
+import AudioVisualizer from './components/AudioVisualizer';
+import ShareButton from './components/ShareButton';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
@@ -1258,6 +1260,16 @@ const App: React.FC = () => {
                 >
                   <ICONS.Music size={16} />
                 </button>
+                
+                {/* Share Button */}
+                <ShareButton song={currentSong} />
+                
+                {/* Audio Visualizer */}
+                <AudioVisualizer 
+                  analyser={musicAnalyser} 
+                  isPlaying={!hiddenAudioRef.current?.paused} 
+                  size="sm"
+                />
               </div>
 
 
