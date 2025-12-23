@@ -139,8 +139,10 @@ describe('IntegrationsPanel Component', () => {
     it('should show System Mode when not personally connected', () => {
       render(<IntegrationsPanel spotifyConnected={false} />);
       
-      // Spotify always shows as "connected" but in System Mode when not personal
-      expect(screen.getByText('System Mode')).toBeInTheDocument();
+      // Multiple services show "System Mode" (Spotify, YouTube, Last.fm)
+      // Just verify that at least one System Mode badge exists
+      const systemModeBadges = screen.getAllByText('System Mode');
+      expect(systemModeBadges.length).toBeGreaterThan(0);
     });
 
     // Note: These tests are skipped because vi.mock() doesn't allow dynamic mock changes
