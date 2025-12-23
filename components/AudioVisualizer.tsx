@@ -40,6 +40,20 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Resolve CSS variable if necessary
+    let resolvedColor = primaryColor;
+    if (primaryColor.startsWith('var(')) {
+      const tempElement = document.createElement('div');
+      tempElement.style.color = primaryColor;
+      tempElement.style.display = 'none';
+      document.body.appendChild(tempElement);
+      resolvedColor = window.getComputedStyle(tempElement).color;
+      document.body.removeChild(tempElement);
+    }
+    
+    // If still failing or invalid, fallback to a safe color
+    if (!resolvedColor) resolvedColor = '#ffffff';
+
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
@@ -61,11 +75,16 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const y = height - barHeight;
         
         // Gradient effect
-        const gradient = ctx.createLinearGradient(0, height, 0, y);
-        gradient.addColorStop(0, primaryColor);
-        gradient.addColorStop(1, `${primaryColor}66`);
+        try {
+          const gradient = ctx.createLinearGradient(0, height, 0, y);
+          gradient.addColorStop(0, resolvedColor);
+          gradient.addColorStop(1, `${resolvedColor}66`); // Hex alpha might fail if resolvedColor is rgb(), but let's try
+          ctx.fillStyle = gradient;
+        } catch (e) {
+            // Fallback for color parsing errors (e.g. if resolvedColor is rgb() and we add 66)
+            ctx.fillStyle = resolvedColor;
+        }
         
-        ctx.fillStyle = gradient;
         ctx.fillRect(x, y, barWidth, barHeight);
       }
     };
@@ -75,7 +94,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       
       ctx.clearRect(0, 0, width, height);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = primaryColor;
+      ctx.strokeStyle = resolvedColor;
       ctx.beginPath();
       
       const sliceWidth = width / bufferLength;
@@ -121,7 +140,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = primaryColor;
+        ctx.strokeStyle = resolvedColor;
         ctx.stroke();
       }
     };
