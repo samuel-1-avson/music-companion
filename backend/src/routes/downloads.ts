@@ -352,23 +352,31 @@ async function uploadToCloudAfterDownload(
   videoId: string,
   metadata: { title: string; artist?: string; duration?: string; coverUrl?: string }
 ) {
+  console.log(`[Cloud Upload] Starting cloud upload process for ${videoId}, downloadId: ${downloadId}`);
+  
   // Wait for download to complete (poll every 2 seconds for up to 5 minutes)
   const maxAttempts = 150;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     const status = await downloadService.getDownloadStatus(downloadId);
-    if (!status) break;
+    if (!status) {
+      console.error(`[Cloud Upload] Download record not found for ${downloadId}`);
+      break;
+    }
+    
+    console.log(`[Cloud Upload] Poll ${i + 1}: status=${status.status}, hasFilePath=${!!status.file_path}`);
     
     if (status.status === 'complete' && status.file_path) {
       console.log(`[Cloud Upload] Download complete, uploading to cloud: ${videoId}`);
+      console.log(`[Cloud Upload] File path: ${status.file_path}`);
       
       // Upload to Supabase Storage
       const uploadResult = await supabaseStorage.uploadToStorage(userId, videoId, status.file_path);
       
       if (uploadResult.success && uploadResult.path) {
         // Save metadata to user_downloads table
-        console.log(`[Cloud Upload] Saving metadata for ${videoId}...`);
+        console.log(`[Cloud Upload] Upload successful, saving metadata for ${videoId}...`);
         const saveResult = await supabaseStorage.saveDownloadMetadata({
           userId,
           videoId,
@@ -382,14 +390,13 @@ async function uploadToCloudAfterDownload(
         });
         
         if (saveResult.success) {
-          console.log(`[Cloud Upload] ✅ Metadata saved successfully for ${videoId}, id: ${saveResult.id}`);
+          console.log(`[Cloud Upload] ✅ Complete success for ${videoId}, id: ${saveResult.id}`);
         } else {
           console.error(`[Cloud Upload] ❌ Metadata save FAILED for ${videoId}: ${saveResult.error}`);
+          console.error(`[Cloud Upload] This usually means SUPABASE_SERVICE_ROLE_KEY is not set in Railway`);
         }
-        
-        console.log(`[Cloud Upload] Successfully uploaded to cloud: ${videoId}`);
       } else {
-        console.error(`[Cloud Upload] Failed to upload: ${uploadResult.error}`);
+        console.error(`[Cloud Upload] ❌ Storage upload FAILED: ${uploadResult.error}`);
         await supabaseStorage.saveDownloadMetadata({
           userId,
           videoId,
@@ -404,10 +411,13 @@ async function uploadToCloudAfterDownload(
     }
     
     if (status.status === 'error') {
-      console.error(`[Cloud Upload] Download failed: ${status.error}`);
+      console.error(`[Cloud Upload] ❌ Download failed for ${videoId}: ${status.error}`);
+      console.error(`[Cloud Upload] This is likely YouTube bot detection or network issue`);
       break;
     }
   }
+  
+  console.log(`[Cloud Upload] Process ended for ${videoId}`);
 }
 
 /**
