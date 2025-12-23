@@ -10,9 +10,12 @@ RUN apk add --no-cache python3 py3-pip make g++ sqlite ffmpeg \
 # Copy package files from backend directory (Railway builds from repo root)
 COPY backend/package*.json ./
 
+# Skip youtube-dl-exec binary download - we use yt-dlp installed via pip
+ENV YOUTUBE_DL_SKIP_DOWNLOAD=true
+
 # Install all dependencies 
 # Use npm install (not ci) to allow building native modules
-RUN npm install
+RUN npm install --ignore-scripts && npm rebuild
 
 # Cache bust - ensures fresh source copy on each build
 ARG CACHEBUST=1
