@@ -89,13 +89,25 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
     try {
       const response = await api.get(`/api/downloads/user/${user.id}`);
       console.log('[CloudDownloads] Response:', response.data);
-      if (response.data?.success) {
-        const downloads = response.data.data.downloads || [];
-        console.log('[CloudDownloads] Setting', downloads.length, 'downloads');
-        setCloudDownloads(downloads);
-      } else {
-        console.error('[CloudDownloads] API returned success=false:', response.data);
+      
+      // Handle both response formats:
+      // 1. Wrapped: {success: true, data: {downloads: [...]}}
+      // 2. Direct: {downloads: [...]} or just the downloads array
+      let downloads: any[] = [];
+      
+      if (response.data?.success && response.data?.data?.downloads) {
+        // Wrapped format
+        downloads = response.data.data.downloads;
+      } else if (response.data?.downloads) {
+        // Direct format: {downloads: [...], count: N}
+        downloads = response.data.downloads;
+      } else if (Array.isArray(response.data)) {
+        // Just an array
+        downloads = response.data;
       }
+      
+      console.log('[CloudDownloads] Setting', downloads.length, 'downloads');
+      setCloudDownloads(downloads);
     } catch (err) {
       console.error('[CloudDownloads] Failed to load:', err);
     }
