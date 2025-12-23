@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ICONS } from '../constants';
 import { useLiveSession } from '../hooks/useLiveSession';
 import { Song, MusicProvider } from '../types';
 import { Type } from '@google/genai';
 import { searchUnified } from '../services/musicService';
+import LiveChatPanel from './LiveChatPanel';
 
 interface LiveInterfaceProps {
   currentSong: Song | null;
@@ -12,6 +13,27 @@ interface LiveInterfaceProps {
   onPlaySong?: (song: Song) => void;
   spotifyToken?: string | null;
   musicProvider?: MusicProvider;
+  // Player controls
+  isPlaying?: boolean;
+  onPause?: () => void;
+  onResume?: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  onSetVolume?: (volume: number) => void;
+  volume?: number;
+  // Queue controls
+  queue?: Song[];
+  onAddToQueue?: (song: Song) => void;
+  // Mode controls
+  onToggleShuffle?: () => void;
+  shuffleEnabled?: boolean;
+  onCycleRepeat?: () => void;
+  repeatMode?: 'off' | 'all' | 'one';
+  // Extended functions
+  onSaveOffline?: (song: Song) => void;
+  onAddToPlaylist?: (song: Song, playlistId: string) => void;
+  onGetLyrics?: (song: Song) => Promise<string | null>;
+  playlists?: { id: string; name: string }[];
 }
 
 // --- THEME & PERSONALITY CONFIG ---
@@ -121,7 +143,28 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
     musicAnalyser, 
     onPlaySong, 
     spotifyToken, 
-    musicProvider = 'YOUTUBE' 
+    musicProvider = 'YOUTUBE',
+    // Player controls
+    isPlaying = false,
+    onPause,
+    onResume,
+    onNext,
+    onPrevious,
+    onSetVolume,
+    volume: playerVolume = 75,
+    // Queue controls
+    queue = [],
+    onAddToQueue,
+    // Mode controls
+    onToggleShuffle,
+    shuffleEnabled = false,
+    onCycleRepeat,
+    repeatMode = 'off',
+    // Extended functions
+    onSaveOffline,
+    onAddToPlaylist,
+    onGetLyrics,
+    playlists = [],
 }) => {
   const [selectedPid, setSelectedPid] = useState('EMPATH');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -137,6 +180,17 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
   const [, forceUpdate] = useState(0); // Force re-render only when needed
   const animationFrameRef = useRef<number | null>(null);
 
+  // Chat Panel State
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    image?: string;
+    timestamp: Date;
+  }[]>([]);
+  const [isChatProcessing, setIsChatProcessing] = useState(false);
+
   const p = PERSONALITIES.find(x => x.id === selectedPid) || PERSONALITIES[0];
 
   // Define Tools (Memoized to prevent reconnect loops)
@@ -148,9 +202,86 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
           parameters: {
             type: Type.OBJECT,
             properties: {
-              query: { type: Type.STRING, description: "Song and artist name." }
+              query: { type: Type.STRING, description: "Song and artist name to search and play." }
             },
             required: ["query"]
+          }
+        },
+        {
+          name: "pauseMusic",
+          description: "Pause the currently playing song.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "resumeMusic",
+          description: "Resume playback of the paused song.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "skipSong",
+          description: "Skip to the next song in the queue.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "previousSong",
+          description: "Go back to the previous song.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "setVolume",
+          description: "Set the playback volume.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              level: { type: Type.NUMBER, description: "Volume level from 0 to 100." }
+            },
+            required: ["level"]
+          }
+        },
+        {
+          name: "queueSong",
+          description: "Add a song to the play queue without interrupting current playback.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              query: { type: Type.STRING, description: "Song and artist to add to queue." }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "toggleShuffle",
+          description: "Turn shuffle mode on or off.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "toggleRepeat",
+          description: "Cycle through repeat modes: off, repeat all, repeat one.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "whatIsPlaying",
+          description: "Get information about the currently playing song.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "saveOffline",
+          description: "Download the current song for offline listening.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "getLyrics",
+          description: "Get the lyrics for the currently playing song.",
+          parameters: { type: Type.OBJECT, properties: {} }
+        },
+        {
+          name: "addToPlaylist",
+          description: "Add the current song to a playlist.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              playlistName: { type: Type.STRING, description: "Name of the playlist to add to. If not specified, will list available playlists." }
+            }
           }
         }
       ]
@@ -176,34 +307,181 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
     systemInstruction: p.instruction,
     tools,
     onToolCall: async (functionCalls) => {
+        // Helper to send tool response
+        const respond = (callId: string, callName: string, result: string) => {
+            sendToolResponse({
+                functionResponses: [{ id: callId, name: callName, response: { result } }]
+            });
+        };
+
         for (const call of functionCalls) {
-            if (call.name === 'playMusic') {
-                setStatusMessage(`Searching: "${call.args.query}"`);
-                try {
-                    const results = await searchUnified(musicProvider as MusicProvider, call.args.query, spotifyToken);
-                    if (results.length > 0 && onPlaySong) {
-                        onPlaySong(results[0]);
-                        sendToolResponse({
-                            functionResponses: [{
-                                id: call.id,
-                                name: call.name, // Required for proper parsing
-                                response: { result: `Playing ${results[0].title}` }
-                            }]
-                        });
+            const { name, args, id } = call;
+            
+            try {
+                switch (name) {
+                    case 'playMusic': {
+                        setStatusMessage(`Searching: "${args.query}"`);
+                        const results = await searchUnified(musicProvider as MusicProvider, args.query, spotifyToken);
+                        if (results.length > 0 && onPlaySong) {
+                            onPlaySong(results[0]);
+                            respond(id, name, `Now playing: ${results[0].title} by ${results[0].artist}`);
+                        } else {
+                            respond(id, name, "Couldn't find that song.");
+                        }
                         setStatusMessage(null);
-                    } else {
-                        sendToolResponse({
-                            functionResponses: [{
-                                id: call.id,
-                                name: call.name, // Required for proper parsing
-                                response: { result: "Not found." }
-                            }]
-                        });
-                        setStatusMessage("Not Found");
+                        break;
                     }
-                } catch (e) {
-                    setStatusMessage("Error");
+                    
+                    case 'pauseMusic': {
+                        if (onPause) {
+                            onPause();
+                            respond(id, name, "Paused.");
+                        } else {
+                            respond(id, name, "Pause not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'resumeMusic': {
+                        if (onResume) {
+                            onResume();
+                            respond(id, name, "Resumed playback.");
+                        } else {
+                            respond(id, name, "Resume not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'skipSong': {
+                        if (onNext) {
+                            onNext();
+                            respond(id, name, "Skipped to next song.");
+                        } else {
+                            respond(id, name, "Skip not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'previousSong': {
+                        if (onPrevious) {
+                            onPrevious();
+                            respond(id, name, "Going to previous song.");
+                        } else {
+                            respond(id, name, "Previous not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'setVolume': {
+                        const level = Math.max(0, Math.min(100, args.level || 50));
+                        if (onSetVolume) {
+                            onSetVolume(level / 100);
+                            respond(id, name, `Volume set to ${level}%.`);
+                        } else {
+                            respond(id, name, "Volume control not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'queueSong': {
+                        setStatusMessage(`Queueing: "${args.query}"`);
+                        const queueResults = await searchUnified(musicProvider as MusicProvider, args.query, spotifyToken);
+                        if (queueResults.length > 0 && onAddToQueue) {
+                            onAddToQueue(queueResults[0]);
+                            respond(id, name, `Added "${queueResults[0].title}" to queue.`);
+                        } else {
+                            respond(id, name, "Couldn't find that song to queue.");
+                        }
+                        setStatusMessage(null);
+                        break;
+                    }
+                    
+                    case 'toggleShuffle': {
+                        if (onToggleShuffle) {
+                            onToggleShuffle();
+                            respond(id, name, `Shuffle ${!shuffleEnabled ? 'enabled' : 'disabled'}.`);
+                        } else {
+                            respond(id, name, "Shuffle control not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'toggleRepeat': {
+                        if (onCycleRepeat) {
+                            onCycleRepeat();
+                            const nextMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
+                            respond(id, name, `Repeat mode: ${nextMode}.`);
+                        } else {
+                            respond(id, name, "Repeat control not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'whatIsPlaying': {
+                        if (currentSong) {
+                            const info = `Currently playing: "${currentSong.title}" by ${currentSong.artist}. ${isPlaying ? 'Playing' : 'Paused'}. Volume at ${Math.round(playerVolume)}%. Queue has ${queue.length} songs.`;
+                            respond(id, name, info);
+                        } else {
+                            respond(id, name, "Nothing is currently playing.");
+                        }
+                        break;
+                    }
+                    
+                    case 'saveOffline': {
+                        if (currentSong && onSaveOffline) {
+                            onSaveOffline(currentSong);
+                            respond(id, name, `Saving "${currentSong.title}" for offline listening.`);
+                        } else {
+                            respond(id, name, "No song to save or offline saving not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'getLyrics': {
+                        if (currentSong && onGetLyrics) {
+                            setStatusMessage("Fetching lyrics...");
+                            const lyrics = await onGetLyrics(currentSong);
+                            setStatusMessage(null);
+                            if (lyrics) {
+                                // Return first 500 chars of lyrics
+                                respond(id, name, lyrics.substring(0, 500) + (lyrics.length > 500 ? '...' : ''));
+                            } else {
+                                respond(id, name, "Couldn't find lyrics for this song.");
+                            }
+                        } else {
+                            respond(id, name, "No song playing or lyrics service not available.");
+                        }
+                        break;
+                    }
+                    
+                    case 'addToPlaylist': {
+                        if (!currentSong) {
+                            respond(id, name, "No song is currently playing to add.");
+                            break;
+                        }
+                        if (args.playlistName && onAddToPlaylist) {
+                            const playlist = playlists.find(p => 
+                                p.name.toLowerCase().includes(args.playlistName.toLowerCase())
+                            );
+                            if (playlist) {
+                                onAddToPlaylist(currentSong, playlist.id);
+                                respond(id, name, `Added "${currentSong.title}" to ${playlist.name}.`);
+                            } else {
+                                respond(id, name, `Playlist "${args.playlistName}" not found. Available: ${playlists.map(p => p.name).join(', ')}`);
+                            }
+                        } else {
+                            respond(id, name, `Available playlists: ${playlists.map(p => p.name).join(', ')}. Say which one to add to.`);
+                        }
+                        break;
+                    }
+                    
+                    default:
+                        respond(id, name, `Unknown command: ${name}`);
                 }
+            } catch (e) {
+                console.error(`[LiveInterface] Tool error for ${name}:`, e);
+                setStatusMessage("Error");
+                respond(id, name, "An error occurred.");
             }
         }
     }
@@ -215,6 +493,113 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({
           transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
       }
   }, [transcripts]);
+
+  // Handle chat message (silent - processes through tools without voice)
+  const handleChatMessage = useCallback(async (text: string, image?: string) => {
+    if (!text.trim() && !image) return;
+    
+    // Add user message
+    const userMessage = {
+      id: `user_${Date.now()}`,
+      role: 'user' as const,
+      content: text,
+      image,
+      timestamp: new Date(),
+    };
+    setChatMessages(prev => [...prev, userMessage]);
+    setIsChatProcessing(true);
+
+    try {
+      // Parse commands and execute directly (silent mode)
+      const lowerText = text.toLowerCase().trim();
+      let response = '';
+
+      // Simple command parsing
+      if (lowerText.includes('play ') || lowerText.startsWith('play')) {
+        const query = text.replace(/play\s*/i, '').trim();
+        if (query && onPlaySong) {
+          const results = await searchUnified(musicProvider as MusicProvider, query, spotifyToken);
+          if (results.length > 0) {
+            onPlaySong(results[0]);
+            response = `Playing "${results[0].title}" by ${results[0].artist}`;
+          } else {
+            response = `Couldn't find "${query}"`;
+          }
+        }
+      } else if (lowerText === 'pause' || lowerText === 'stop') {
+        onPause?.();
+        response = 'Paused.';
+      } else if (lowerText === 'resume' || lowerText === 'continue') {
+        onResume?.();
+        response = 'Resumed.';
+      } else if (lowerText === 'skip' || lowerText === 'next') {
+        onNext?.();
+        response = 'Skipped to next.';
+      } else if (lowerText === 'previous' || lowerText === 'back') {
+        onPrevious?.();
+        response = 'Going back.';
+      } else if (lowerText.includes('volume')) {
+        const match = lowerText.match(/\d+/);
+        if (match && onSetVolume) {
+          const level = Math.min(100, Math.max(0, parseInt(match[0])));
+          onSetVolume(level / 100);
+          response = `Volume set to ${level}%`;
+        }
+      } else if (lowerText === 'shuffle') {
+        onToggleShuffle?.();
+        response = `Shuffle ${!shuffleEnabled ? 'enabled' : 'disabled'}.`;
+      } else if (lowerText === 'repeat') {
+        onCycleRepeat?.();
+        response = `Repeat mode changed.`;
+      } else if (lowerText.includes('queue ') || lowerText.startsWith('queue')) {
+        const query = text.replace(/queue\s*/i, '').trim();
+        if (query && onAddToQueue) {
+          const results = await searchUnified(musicProvider as MusicProvider, query, spotifyToken);
+          if (results.length > 0) {
+            onAddToQueue(results[0]);
+            response = `Added "${results[0].title}" to queue.`;
+          }
+        }
+      } else if (lowerText === 'what' || lowerText.includes('playing')) {
+        if (currentSong) {
+          response = `Now playing: "${currentSong.title}" by ${currentSong.artist}`;
+        } else {
+          response = 'Nothing is playing.';
+        }
+      } else if (lowerText === 'save' || lowerText.includes('offline')) {
+        if (currentSong && onSaveOffline) {
+          onSaveOffline(currentSong);
+          response = `Saving "${currentSong.title}" for offline.`;
+        }
+      } else if (lowerText === 'lyrics') {
+        if (currentSong && onGetLyrics) {
+          const lyrics = await onGetLyrics(currentSong);
+          response = lyrics ? lyrics.substring(0, 300) + '...' : 'Lyrics not found.';
+        }
+      } else {
+        response = "Commands: play [song], pause, resume, skip, previous, volume [0-100], shuffle, repeat, queue [song], save, lyrics";
+      }
+
+      // Add assistant response
+      if (response) {
+        setChatMessages(prev => [...prev, {
+          id: `ai_${Date.now()}`,
+          role: 'assistant',
+          content: response,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (e) {
+      setChatMessages(prev => [...prev, {
+        id: `error_${Date.now()}`,
+        role: 'assistant',
+        content: 'An error occurred.',
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setIsChatProcessing(false);
+    }
+  }, [currentSong, musicProvider, spotifyToken, onPlaySong, onPause, onResume, onNext, onPrevious, onSetVolume, onToggleShuffle, shuffleEnabled, onCycleRepeat, onAddToQueue, onSaveOffline, onGetLyrics]);
 
   // Track Music Volume
   useEffect(() => {
