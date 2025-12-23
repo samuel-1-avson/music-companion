@@ -151,12 +151,19 @@ export async function getUserDownloads(userId: string): Promise<DownloadMetadata
   }
 
   try {
+    console.log(`[SupabaseStorage] Fetching downloads for user: ${userId}`);
+    
     const { data, error } = await supabase
       .from('user_downloads')
       .select('*')
       .eq('user_id', userId)
       .in('status', ['completed', 'synced']) // Include both uploaded files and metadata-only records
       .order('created_at', { ascending: false });
+
+    console.log(`[SupabaseStorage] Query result: ${data?.length || 0} records, error: ${error?.message || 'none'}`);
+    if (data?.length) {
+      console.log(`[SupabaseStorage] First record:`, JSON.stringify(data[0]));
+    }
 
     if (error) {
       console.error('[SupabaseStorage] Get downloads error:', error);

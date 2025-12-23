@@ -435,8 +435,12 @@ async function uploadToCloudAfterDownload(
 router.get('/user/:userId', async (req, res) => {
   const { userId } = req.params;
   
+  console.log(`[User Downloads GET] Fetching downloads for user: ${userId}`);
+  
   try {
     const downloads = await supabaseStorage.getUserDownloads(userId);
+    
+    console.log(`[User Downloads GET] Got ${downloads.length} downloads`);
     
     // Add cloud URLs to each download
     const downloadsWithUrls = await Promise.all(
@@ -454,6 +458,7 @@ router.get('/user/:userId', async (req, res) => {
       }
     });
   } catch (error: any) {
+    console.error(`[User Downloads GET] Error:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
