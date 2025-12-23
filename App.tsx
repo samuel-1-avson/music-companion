@@ -22,6 +22,7 @@ import RadioStation from './components/RadioStation';
 import ArtistGraph from './components/ArtistGraph';
 import LyricsPanel from './components/LyricsPanel';
 import ErrorToast from './components/ErrorToast';
+import OfflineBanner from './components/OfflineBanner';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
@@ -32,6 +33,7 @@ import { recommendNextSong, generateDJTransition, generateGreeting, generatePlay
 
 import { useWakeWord } from './hooks/useWakeWord';
 import { useFavorites } from './hooks/useFavorites';
+import { useOfflineDetection } from './hooks/useOfflineDetection';
 import { getYouTubeAudioStream } from './services/musicService';
 import { addToHistoryDB, saveSettingDB, getSettingDB } from './utils/db';
 import { initializeDeveloperApi, dispatchApiEvent } from './services/developerApiService';
@@ -146,6 +148,9 @@ const App: React.FC = () => {
   
   // Use Supabase-backed favorites hook (falls back to localStorage for guests)
   const { favorites: favoriteSongs, toggleFavorite: toggleFavoriteSupabase, isFavorite } = useFavorites();
+  
+  // Offline detection
+  const { isOffline } = useOfflineDetection();
   
   // Convert FavoriteSong[] to Song[] for component compatibility
   const favorites: Song[] = favoriteSongs.map(f => ({
@@ -1425,6 +1430,9 @@ const App: React.FC = () => {
       
       {/* Global Error Toast */}
       <ErrorToast />
+      
+      {/* Offline Banner */}
+      <OfflineBanner isOffline={isOffline} />
 
 
     </div>
