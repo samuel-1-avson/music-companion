@@ -21,6 +21,7 @@ import InstallPrompt from './components/InstallPrompt';
 import RadioStation from './components/RadioStation';
 import ArtistGraph from './components/ArtistGraph';
 import LyricsPanel from './components/LyricsPanel';
+import ErrorToast from './components/ErrorToast';
 import { LoadingSkeleton } from './components/LazyLoad';
 import UserMenu from './components/UserMenu';
 
@@ -435,9 +436,6 @@ const App: React.FC = () => {
           if (!e.ctrlKey && !e.metaKey) {
             setRepeatMode(prev => prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off');
           }
-          break;
-        case 'l':
-          setCurrentView(AppView.LIVE);
           break;
         case 'f':
           if (!e.ctrlKey && !e.metaKey) {
@@ -1424,6 +1422,9 @@ const App: React.FC = () => {
       
       {/* PWA Install Prompt */}
       <InstallPrompt />
+      
+      {/* Global Error Toast */}
+      <ErrorToast />
 
 
     </div>
