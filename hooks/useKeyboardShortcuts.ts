@@ -10,12 +10,21 @@ interface KeyboardShortcuts {
   toggleMute?: () => void;
   seekForward?: () => void;
   seekBackward?: () => void;
+  toggleShuffle?: () => void;
+  cycleRepeatMode?: () => void;
   
   // UI
   toggleFullscreen?: () => void;
   toggleQueue?: () => void;
   toggleLyrics?: () => void;
+  toggleHelp?: () => void;
   search?: () => void;
+  
+  // View Navigation (1-9 keys)
+  navigateToView?: (viewIndex: number) => void;
+  
+  // Focus Mode
+  toggleFocusMode?: () => void;
   
   // Custom
   custom?: Record<string, () => void>;
@@ -24,6 +33,8 @@ interface KeyboardShortcuts {
 interface UseKeyboardShortcutsOptions {
   enabled?: boolean;
   preventDefault?: boolean;
+  /** Current view for context-aware shortcuts */
+  currentView?: string;
 }
 
 export const useKeyboardShortcuts = (
@@ -85,9 +96,25 @@ export const useKeyboardShortcuts = (
         shortcuts.toggleMute?.();
         handled = true;
         break;
+      case 's':
+        // Only toggle shuffle if not using Ctrl+S (save shortcut)
+        if (!e.ctrlKey && !e.metaKey) {
+          shortcuts.toggleShuffle?.();
+          handled = true;
+        }
+        break;
+      case 'r':
+        // Only cycle repeat if not using Ctrl+R (refresh shortcut)
+        if (!e.ctrlKey && !e.metaKey) {
+          shortcuts.cycleRepeatMode?.();
+          handled = true;
+        }
+        break;
       case 'f':
-        shortcuts.toggleFullscreen?.();
-        handled = true;
+        if (!e.ctrlKey && !e.metaKey) {
+          shortcuts.toggleFocusMode?.() ?? shortcuts.toggleFullscreen?.();
+          handled = true;
+        }
         break;
       case 'q':
         shortcuts.toggleQueue?.();
@@ -97,8 +124,30 @@ export const useKeyboardShortcuts = (
         shortcuts.toggleLyrics?.();
         handled = true;
         break;
+      case '?':
+        shortcuts.toggleHelp?.();
+        handled = true;
+        break;
+      case 'escape':
+        shortcuts.toggleHelp?.(); // Close help if open
+        handled = true;
+        break;
       case '/':
         shortcuts.search?.();
+        handled = true;
+        break;
+      // View Navigation (1-9)
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+      case '6':
+      case '7':
+      case '8':
+      case '9':
+        const viewIndex = parseInt(key, 10);
+        shortcuts.navigateToView?.(viewIndex);
         handled = true;
         break;
     }

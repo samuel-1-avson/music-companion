@@ -14,7 +14,7 @@ export interface SpotifyTokens {
   expiresAt?: number;
 }
 
-type TokenEventType = 'TOKEN_UPDATED' | 'TOKEN_EXPIRED' | 'REFRESH_FAILED';
+type TokenEventType = 'TOKEN_UPDATED' | 'TOKEN_EXPIRED' | 'REFRESH_FAILED' | 'CIRCUIT_OPEN' | 'CIRCUIT_CLOSED';
 type TokenListener = (event: TokenEventType, tokens: SpotifyTokens | null) => void;
 
 // Storage keys
@@ -36,6 +36,10 @@ const MAX_RETRY_ATTEMPTS = 3;
 // Retry delay base (exponential backoff)
 const RETRY_DELAY_BASE_MS = 1000;
 
+// Circuit breaker configuration
+const CIRCUIT_FAILURE_THRESHOLD = 5; // Open circuit after 5 consecutive failures
+const CIRCUIT_RESET_TIMEOUT_MS = 10 * 60 * 1000; // Reset after 10 minutes
+
 /**
  * TokenManager Singleton
  * 
@@ -55,6 +59,11 @@ class TokenManagerClass {
   private listeners: Set<TokenListener> = new Set();
   private refreshTimer: number | null = null;
   private isRefreshing = false;
+  
+  // Circuit breaker state
+  private consecutiveFailures = 0;
+  private circuitOpen = false;
+  private circuitOpenedAt = 0;
 
   constructor() {
     // Load tokens from storage on initialization
@@ -176,10 +185,36 @@ class TokenManagerClass {
   }
 
   /**
+   * Check if circuit breaker should allow refresh attempt
+   */
+  private checkCircuitBreaker(): boolean {
+    // If circuit is open, check if it should be reset
+    if (this.circuitOpen) {
+      const timeSinceOpened = Date.now() - this.circuitOpenedAt;
+      if (timeSinceOpened >= CIRCUIT_RESET_TIMEOUT_MS) {
+        console.log('[TokenManager] Circuit breaker reset (timeout elapsed)');
+        this.circuitOpen = false;
+        this.consecutiveFailures = 0;
+        this.emit('CIRCUIT_CLOSED');
+        return true;
+      }
+      console.warn('[TokenManager] Circuit breaker OPEN - blocking refresh attempt');
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Perform token refresh with backend
    * Returns null if refresh fails after all retries
    */
   private async doRefresh(attempt: number = 1): Promise<SpotifyTokens | null> {
+    // Check circuit breaker on first attempt
+    if (attempt === 1 && !this.checkCircuitBreaker()) {
+      this.emit('REFRESH_FAILED');
+      return null;
+    }
+    
     const refreshToken = this.tokens?.refreshToken;
     
     if (!refreshToken) {
@@ -225,6 +260,13 @@ class TokenManagerClass {
       // Schedule next proactive refresh
       this.scheduleProactiveRefresh();
       
+      // Reset circuit breaker on success
+      this.consecutiveFailures = 0;
+      if (this.circuitOpen) {
+        this.circuitOpen = false;
+        this.emit('CIRCUIT_CLOSED');
+      }
+      
       console.log('[TokenManager] Token refreshed successfully');
       this.emit('TOKEN_UPDATED');
       
@@ -242,8 +284,18 @@ class TokenManagerClass {
         return this.doRefresh(attempt + 1);
       }
       
-      // All retries exhausted
-      console.error('[TokenManager] All refresh attempts failed');
+      // All retries exhausted - update circuit breaker
+      this.consecutiveFailures++;
+      console.error(`[TokenManager] All refresh attempts failed (consecutive failures: ${this.consecutiveFailures})`);
+      
+      // Check if we should open the circuit
+      if (this.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD && !this.circuitOpen) {
+        this.circuitOpen = true;
+        this.circuitOpenedAt = Date.now();
+        console.error(`[TokenManager] Circuit breaker OPENED after ${this.consecutiveFailures} failures`);
+        this.emit('CIRCUIT_OPEN');
+      }
+      
       this.emit('REFRESH_FAILED');
       return null;
     }
@@ -340,6 +392,34 @@ class TokenManagerClass {
     this.clearStorage();
     this.emit('TOKEN_EXPIRED');
     console.log('[TokenManager] Tokens cleared');
+  }
+
+  /**
+   * Check if circuit breaker is currently open
+   */
+  isCircuitOpen(): boolean {
+    // Check if circuit should be reset due to timeout
+    if (this.circuitOpen) {
+      const timeSinceOpened = Date.now() - this.circuitOpenedAt;
+      if (timeSinceOpened >= CIRCUIT_RESET_TIMEOUT_MS) {
+        this.circuitOpen = false;
+        this.consecutiveFailures = 0;
+        return false;
+      }
+    }
+    return this.circuitOpen;
+  }
+
+  /**
+   * Manually reset the circuit breaker
+   */
+  resetCircuitBreaker(): void {
+    if (this.circuitOpen) {
+      console.log('[TokenManager] Circuit breaker manually reset');
+      this.circuitOpen = false;
+      this.consecutiveFailures = 0;
+      this.emit('CIRCUIT_CLOSED');
+    }
   }
 
   /**
