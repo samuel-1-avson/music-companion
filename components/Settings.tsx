@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { Theme } from '../types';
 import { useTranslation, Language, languageNames } from '../i18n';
+import api from '../utils/apiClient';
 
 interface SettingsProps {
   currentTheme: Theme;
@@ -25,6 +26,67 @@ const Settings: React.FC<SettingsProps> = ({
 
   // i18n
   const { language, setLanguage, t } = useTranslation();
+  
+  // YouTube cookies state
+  const [cookiesStatus, setCookiesStatus] = useState<{configured: boolean; lastModified?: string} | null>(null);
+  const [cookiesLoading, setCookiesLoading] = useState(false);
+  const [cookiesMessage, setCookiesMessage] = useState<{type: 'success' | 'error'; text: string} | null>(null);
+
+  // Check cookies status on mount
+  useEffect(() => {
+    checkCookiesStatus();
+  }, []);
+
+  const checkCookiesStatus = async () => {
+    try {
+      const response = await api.get('/api/cookies/youtube/status');
+      if (response.data?.success) {
+        setCookiesStatus(response.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to check cookies status:', err);
+    }
+  };
+
+  const handleCookiesUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setCookiesLoading(true);
+    setCookiesMessage(null);
+
+    try {
+      const content = await file.text();
+      const response = await api.post('/api/cookies/youtube', { cookies: content });
+      
+      if (response.data?.success) {
+        setCookiesMessage({ type: 'success', text: 'YouTube cookies uploaded successfully!' });
+        await checkCookiesStatus();
+      } else {
+        setCookiesMessage({ type: 'error', text: response.data?.error || 'Upload failed' });
+      }
+    } catch (err: any) {
+      setCookiesMessage({ type: 'error', text: err.message || 'Upload failed' });
+    } finally {
+      setCookiesLoading(false);
+      // Clear file input
+      event.target.value = '';
+    }
+  };
+
+  const handleCookiesDelete = async () => {
+    setCookiesLoading(true);
+    try {
+      await api.delete('/api/cookies/youtube');
+      setCookiesMessage({ type: 'success', text: 'Cookies removed' });
+      setCookiesStatus({ configured: false });
+    } catch (err: any) {
+      setCookiesMessage({ type: 'error', text: err.message || 'Delete failed' });
+    } finally {
+      setCookiesLoading(false);
+    }
+  };
+
   
 
   const themes: { id: Theme; label: string; bg: string; color: string; tags: string[] }[] = [
@@ -238,6 +300,83 @@ const Settings: React.FC<SettingsProps> = ({
                     <ICONS.Trash size={16} /> Factory Reset
                 </button>
                 <p className="text-[9px] text-gray-400 mt-2 text-center">Clears all settings, history, and offline data.</p>
+             </div>
+         </div>
+      </div>
+
+      {/* YouTube Cookies Section */}
+      <div>
+         <div className="flex items-center gap-2 mb-6">
+              <ICONS.Key className="text-[var(--primary)]" size={20} />
+              <h3 className="text-lg font-bold font-mono uppercase text-[var(--text-main)]">YouTube Cookies</h3>
+         </div>
+
+         <div className="bg-[var(--bg-card)] border-2 border-theme p-8 shadow-retro">
+             <div className="flex flex-col gap-6">
+                 <div>
+                     <p className="text-sm font-mono text-[var(--text-muted)] mb-4">
+                         Upload YouTube cookies to bypass download restrictions. This uses your logged-in YouTube session for downloads.
+                     </p>
+                     
+                     {/* Status */}
+                     <div className="flex items-center gap-2 mb-4">
+                         <div className={`w-3 h-3 rounded-full ${cookiesStatus?.configured ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                         <span className="text-xs font-mono text-[var(--text-main)]">
+                             {cookiesStatus?.configured 
+                                 ? `Configured (Last updated: ${new Date(cookiesStatus.lastModified!).toLocaleDateString()})` 
+                                 : 'Not configured'}
+                         </span>
+                     </div>
+
+                     {/* Upload/Remove buttons */}
+                     <div className="flex gap-4">
+                         <label className="cursor-pointer">
+                             <input 
+                                 type="file" 
+                                 accept=".txt" 
+                                 onChange={handleCookiesUpload}
+                                 disabled={cookiesLoading}
+                                 className="hidden"
+                             />
+                             <span className={`inline-flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-black font-mono text-xs font-bold border-2 border-black hover:bg-[var(--primary-hover)] transition-colors ${cookiesLoading ? 'opacity-50' : ''}`}>
+                                 <ICONS.Upload size={14} />
+                                 {cookiesLoading ? 'Uploading...' : 'Upload cookies.txt'}
+                             </span>
+                         </label>
+                         
+                         {cookiesStatus?.configured && (
+                             <button 
+                                 onClick={handleCookiesDelete}
+                                 disabled={cookiesLoading}
+                                 className="px-4 py-2 bg-red-50 text-red-600 font-mono text-xs font-bold border-2 border-red-200 hover:bg-red-600 hover:text-white transition-colors"
+                             >
+                                 Remove
+                             </button>
+                         )}
+                     </div>
+
+                     {/* Message */}
+                     {cookiesMessage && (
+                         <div className={`mt-4 p-3 border-2 text-xs font-mono ${
+                             cookiesMessage.type === 'success' 
+                                 ? 'border-green-300 bg-green-50 text-green-700' 
+                                 : 'border-red-300 bg-red-50 text-red-700'
+                         }`}>
+                             {cookiesMessage.text}
+                         </div>
+                     )}
+                 </div>
+
+                 {/* Instructions */}
+                 <div className="border-t border-gray-200 pt-4">
+                     <p className="text-xs font-mono text-[var(--text-muted)] font-bold mb-2">HOW TO EXPORT COOKIES:</p>
+                     <ol className="text-xs font-mono text-[var(--text-muted)] space-y-1 list-decimal list-inside">
+                         <li>Install "Get cookies.txt LOCALLY" extension in Chrome/Brave</li>
+                         <li>Go to youtube.com and ensure you're logged in</li>
+                         <li>Click the extension and export cookies</li>
+                         <li>Upload the cookies.txt file here</li>
+                     </ol>
+                 </div>
              </div>
          </div>
       </div>
