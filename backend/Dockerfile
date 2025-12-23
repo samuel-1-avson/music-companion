@@ -25,6 +25,14 @@ COPY backend/tsconfig.json ./
 # Create data directory
 RUN mkdir -p /app/data
 
+# Create startup script that updates yt-dlp and starts the app
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Updating yt-dlp to latest version..."' >> /app/start.sh && \
+    echo 'pip3 install --break-system-packages --upgrade yt-dlp' >> /app/start.sh && \
+    echo 'echo "Starting server..."' >> /app/start.sh && \
+    echo 'exec npx tsx src/index.ts' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
 # Expose port
 EXPOSE 3001
 
@@ -32,5 +40,5 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:3001/health || exit 1
 
-# Run with tsx (TypeScript execution)
-CMD ["npx", "tsx", "src/index.ts"]
+# Run startup script (updates yt-dlp then starts server)
+CMD ["/app/start.sh"]
