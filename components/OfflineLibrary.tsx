@@ -238,75 +238,39 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
       addLog(`[video] ${track.videoId}`);
       
       try {
-          // If user is authenticated, use cloud download endpoint
+          // If user is authenticated, sync metadata to cloud AND download locally
           if (isAuthenticated && user?.id) {
-              addLog(`[cloud] User authenticated, syncing to cloud...`);
-              const response = await api.post(`/api/downloads/user/${user.id}`, {
-                  videoId: track.videoId,
-                  title: track.title,
-                  artist: track.artist,
-                  duration: formatDuration(track.duration),
-                  coverUrl: track.artworkUrl
-              });
+              addLog(`[cloud] User authenticated, syncing metadata to cloud...`);
               
-              if (!response.data?.success) {
-                  throw new Error(response.data?.error || 'Cloud download failed');
-              }
-              
-              if (response.data?.data?.cached) {
-                  addLog(`[cloud] Song already in your cloud library!`);
-                  addLog(`[success] Ready to play.`);
-                  setDownloadingIds(prev => {
-                      const next = new Set(prev);
-                      next.delete(track.videoId!);
-                      return next;
+              // Sync metadata to cloud (Telegram-style - just records, no file upload)
+              try {
+                  const syncResponse = await api.post(`/api/downloads/user/${user.id}`, {
+                      videoId: track.videoId,
+                      title: track.title,
+                      artist: track.artist,
+                      duration: formatDuration(track.duration),
+                      coverUrl: track.artworkUrl
                   });
-                  await loadCloudDownloads();
-                  return;
-              }
-              
-              addLog(`[queue] Download started, will sync to cloud...`);
-              addLog(`[yt-dlp] Extracting audio from YouTube...`);
-              
-              // Poll for progress using local download ID
-              const downloadId = response.data?.data?.id;
-              if (downloadId) {
-                  const cancelPoll = downloadService.pollDownloadProgress(downloadId, async (status) => {
-                      if (status.status === 'downloading') {
-                          addLog(`[progress] Downloading... ${status.progress}%`);
-                      } else if (status.status === 'processing') {
-                          addLog(`[ffmpeg] Converting to MP3...`);
-                      } else if (status.status === 'complete') {
-                          addLog(`[success] Download complete!`);
-                          addLog(`[size] ${(status.file_size / 1024 / 1024).toFixed(2)} MB`);
-                          addLog(`[cloud] Uploading to cloud storage...`);
-                          
-                          // Cloud upload happens async on backend, just reload after delay
-                          setTimeout(async () => {
-                              addLog(`[cloud] ✓ Cloud sync in progress...`);
-                              await loadCloudDownloads();
-                              await loadServerDownloads();
-                          }, 5000);
-                          
-                          setDownloadingIds(prev => {
-                              const next = new Set(prev);
-                              next.delete(track.videoId!);
-                              return next;
-                          });
-                      } else if (status.status === 'error') {
-                          addLog(`[error] ${status.error}`);
-                          setDownloadingIds(prev => {
-                              const next = new Set(prev);
-                              next.delete(track.videoId!);
-                              return next;
-                          });
+                  
+                  if (syncResponse.data?.success) {
+                      if (syncResponse.data?.data?.cached) {
+                          addLog(`[cloud] ✓ Already in your download history!`);
+                      } else {
+                          addLog(`[cloud] ✓ Synced to download history!`);
                       }
-                  }, 2000);
+                      // Reload cloud downloads to show the new record
+                      await loadCloudDownloads();
+                  } else {
+                      addLog(`[cloud] Warning: Could not sync metadata`);
+                  }
+              } catch (syncErr) {
+                  addLog(`[cloud] Warning: Metadata sync failed, continuing with local download...`);
+                  console.error('Cloud sync error:', syncErr);
               }
-              return;
           }
           
-          // Fallback to regular server download if not authenticated
+          // Now proceed with the actual download to LOCAL storage
+          addLog(`[download] Starting server-side download via yt-dlp...`);
           const result = await downloadService.startDownload({
               videoId: track.videoId,
               title: track.title,
