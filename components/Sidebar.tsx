@@ -14,14 +14,13 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, spotifyProfile, userProfile, isListeningForWakeWord }) => {
   const navItems = [
     { id: AppView.DASHBOARD, label: 'Dashboard', icon: ICONS.Dashboard },
-    { id: AppView.CHAT, label: 'Chat Assistant', icon: ICONS.MessageSquare },
     { id: AppView.LIVE, label: 'Live Mode', icon: ICONS.Live },
     { id: AppView.PROFILE, label: 'My Profile', icon: ICONS.User }, 
     { id: AppView.COLLAB, label: 'Shared Playlists', icon: ICONS.User },
     { id: AppView.OFFLINE, label: 'Offline Hub', icon: ICONS.Offline },
     { id: AppView.ARCADE, label: 'Retro Arcade', icon: ICONS.Game },
     { id: AppView.LAB, label: 'Sonic Lab', icon: ICONS.Sliders },
-    { id: AppView.EXTENSIONS, label: 'Integrations', icon: ICONS.Box }, // Renamed from Extensions
+    { id: AppView.EXTENSIONS, label: 'Integrations', icon: ICONS.Box },
     { id: AppView.SETTINGS, label: 'Settings', icon: ICONS.Settings },
   ];
 

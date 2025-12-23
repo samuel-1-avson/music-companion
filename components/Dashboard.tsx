@@ -30,8 +30,7 @@ const PROVIDER_CONFIG: Record<MusicProvider, { label: string; icon: any }> = {
 
 // App navigation shortcuts for quick access
 const APP_SHORTCUTS = [
-  { id: 'chat', label: 'Chat Assistant', view: AppView.CHAT, icon: 'MessageSquare', keywords: ['chat', 'assistant', 'ai', 'help', 'ask'] },
-  { id: 'live', label: 'Live Mode', view: AppView.LIVE, icon: 'Radio', keywords: ['live', 'radio', 'stream', 'broadcast'] },
+  { id: 'live', label: 'Live Mode', view: AppView.LIVE, icon: 'Radio', keywords: ['live', 'radio', 'stream', 'broadcast', 'chat', 'assistant', 'ai'] },
   { id: 'profile', label: 'My Profile', view: AppView.PROFILE, icon: 'User', keywords: ['profile', 'account', 'me', 'user', 'stats'] },
   { id: 'offline', label: 'Offline Hub', view: AppView.OFFLINE, icon: 'DownloadCloud', keywords: ['offline', 'download', 'saved', 'local', 'library'] },
   { id: 'arcade', label: 'Retro Arcade', view: AppView.ARCADE, icon: 'Gamepad2', keywords: ['arcade', 'games', 'retro', 'play', 'fun'] },
