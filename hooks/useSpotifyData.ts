@@ -214,11 +214,22 @@ export function useSpotifyData() {
         return null;
       }
 
+      // Handle 204 No Content (e.g., nothing currently playing)
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return null;
+      }
+
       if (!response.ok) {
         throw new Error(`Spotify API error: ${response.status}`);
       }
 
-      return await response.json();
+      // Check if response has content before parsing
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        return null;
+      }
+
+      return JSON.parse(text) as T;
     } catch (error: any) {
       console.error('[SpotifyData] API error:', error);
       throw error;
