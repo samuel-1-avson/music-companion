@@ -40,6 +40,7 @@ import { recommendNextSong, generateDJTransition, generateGreeting, generatePlay
 import { useWakeWord } from './hooks/useWakeWord';
 import { useFavorites } from './hooks/useFavorites';
 import { useOfflineDetection } from './hooks/useOfflineDetection';
+import { useSleepTimer } from './hooks/useSleepTimer';
 import { getYouTubeAudioStream } from './services/musicService';
 import { addToHistoryDB, saveSettingDB, getSettingDB } from './utils/db';
 import { initializeDeveloperApi, dispatchApiEvent } from './services/developerApiService';
@@ -149,7 +150,6 @@ const App: React.FC = () => {
   const setCrossfadeDuration = useSettingsStore(state => state.setCrossfadeDuration);
   const eqValues = useSettingsStore(state => state.eqValues);
   const sleepTimerState = useSettingsStore(state => state.sleepTimer);
-  const sleepTimerMinutes = sleepTimerState.minutes;
   const sleepTimerRemaining = sleepTimerState.remaining;
   
   // Use Supabase-backed favorites hook (falls back to localStorage for guests)
@@ -186,7 +186,6 @@ const App: React.FC = () => {
   const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
-  const sleepTimerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- PERSISTENCE & INIT ---
   useEffect(() => {
@@ -378,43 +377,20 @@ const App: React.FC = () => {
       });
   };
 
-  // --- PHASE 1: SLEEP TIMER LOGIC ---
-  const startSleepTimer = (minutes: number) => {
-    if (sleepTimerIntervalRef.current) {
-      clearInterval(sleepTimerIntervalRef.current);
-    }
-    const endTime = Date.now() + minutes * 60 * 1000;
-    useSettingsStore.getState().startSleepTimer(minutes);
-    
-    sleepTimerIntervalRef.current = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-      useSettingsStore.getState().updateSleepTimerRemaining(remaining);
-      if (remaining <= 0) {
-        // Stop playback
-        if (hiddenAudioRef.current) {
-          hiddenAudioRef.current.pause();
-        }
-        cancelSleepTimer();
+  // --- SLEEP TIMER (using hook) ---
+  const { 
+    start: startSleepTimer, 
+    cancel: cancelSleepTimer,
+    isActive: isSleepTimerActive,
+    minutes: sleepTimerMinutes 
+  } = useSleepTimer({
+    onExpire: () => {
+      // Pause audio when sleep timer expires
+      if (hiddenAudioRef.current) {
+        hiddenAudioRef.current.pause();
       }
-    }, 1000);
-  };
-
-  const cancelSleepTimer = () => {
-    if (sleepTimerIntervalRef.current) {
-      clearInterval(sleepTimerIntervalRef.current);
-      sleepTimerIntervalRef.current = null;
     }
-    useSettingsStore.getState().cancelSleepTimer();
-  };
-
-  // Cleanup sleep timer on unmount
-  useEffect(() => {
-    return () => {
-      if (sleepTimerIntervalRef.current) {
-        clearInterval(sleepTimerIntervalRef.current);
-      }
-    };
-  }, []);
+  });
 
   // --- PHASE 1: KEYBOARD SHORTCUTS ---
   useEffect(() => {

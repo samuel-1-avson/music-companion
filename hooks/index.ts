@@ -11,3 +11,5 @@ export { useUserPreferences } from './useUserPreferences';
 export { useCollaborativePlaylists } from './useCollaborativePlaylists';
 export { useIntegrations } from './useIntegrations';
 export { useSpotifyData } from './useSpotifyData';
+export { useSleepTimer } from './useSleepTimer';
+export { useEqualizer } from './useEqualizer';
