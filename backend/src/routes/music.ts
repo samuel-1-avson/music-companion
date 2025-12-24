@@ -249,19 +249,26 @@ async function searchYouTube(query: string, limit: number): Promise<Song[]> {
  */
 router.get('/youtube/stream/:videoId', async (req, res) => {
   const { videoId } = req.params;
+  console.log('[YouTube Stream] Fetching stream for:', videoId);
 
-  // Updated Dec 2024 with reliable instances
+  // Updated Dec 2024 with more reliable instances
   const instances = [
+    'https://vid.puffyan.us',
+    'https://invidious.snopyta.org',
+    'https://yewtu.be',
     'https://inv.nadeko.net',
     'https://invidious.nerdvpn.de',
     'https://inv.tux.pizza',
-    'https://invidious.jing.rocks'
+    'https://invidious.jing.rocks',
+    'https://invidious.privacyredirect.com',
+    'https://iv.melmac.space'
   ];
 
   for (const instance of instances) {
     try {
       const url = `${instance}/api/v1/videos/${videoId}`;
-      const response = await axios.get(url, { timeout: 5000 });
+      console.log('[YouTube Stream] Trying:', instance);
+      const response = await axios.get(url, { timeout: 8000 });
       
       const audioFormats = response.data.adaptiveFormats?.filter(
         (f: any) => f.type?.startsWith('audio/')
@@ -273,6 +280,7 @@ router.get('/youtube/stream/:videoId', async (req, res) => {
           (b.bitrate || 0) - (a.bitrate || 0)
         )[0];
 
+        console.log('[YouTube Stream] SUCCESS from:', instance, 'bitrate:', bestAudio.bitrate);
         return res.json({
           success: true,
           data: {
@@ -281,12 +289,16 @@ router.get('/youtube/stream/:videoId', async (req, res) => {
             bitrate: bestAudio.bitrate
           }
         });
+      } else {
+        console.log('[YouTube Stream] No audio formats from:', instance);
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.log('[YouTube Stream] Failed:', instance, e.message);
       continue;
     }
   }
 
+  console.log('[YouTube Stream] All instances failed for:', videoId);
   res.status(404).json({ success: false, error: 'Stream not found' });
 });
 
