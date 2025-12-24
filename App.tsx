@@ -908,16 +908,30 @@ const App: React.FC = () => {
     let trackToPlay = song;
     
     if (musicProvider !== 'SPOTIFY') {
-        if (song.spotifyUri?.startsWith('yt:') && !song.previewUrl) {
-            const videoId = song.spotifyUri.split(':')[1];
+        // Fetch YouTube stream if no previewUrl and we have a video ID
+        if (!song.previewUrl && !song.fileBlob) {
+            // Check for videoId in spotifyUri format (yt:VIDEO_ID) or direct id
+            const videoId = song.spotifyUri?.startsWith('yt:') 
+                ? song.spotifyUri.split(':')[1] 
+                : song.id;
+            
             if (videoId) {
                 try {
+                    console.log('[Music] Fetching YouTube stream for:', videoId);
                     const streamUrl = await getYouTubeAudioStream(videoId);
-                    if (streamUrl) trackToPlay = { ...song, previewUrl: streamUrl };
-                } catch(e) {}
+                    if (streamUrl) {
+                        trackToPlay = { ...song, previewUrl: streamUrl };
+                        console.log('[Music] Got stream URL for playback');
+                    } else {
+                        console.warn('[Music] No stream URL returned');
+                    }
+                } catch(e) {
+                    console.error('[Music] Failed to get stream:', e);
+                }
             }
         }
-        if (song.fileBlob && !song.previewUrl) {
+        // Handle local file blobs
+        if (song.fileBlob && !trackToPlay.previewUrl) {
            trackToPlay = { ...song, previewUrl: URL.createObjectURL(song.fileBlob) };
         }
     }
