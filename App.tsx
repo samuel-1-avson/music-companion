@@ -80,6 +80,8 @@ const App: React.FC = () => {
   const setVolume = usePlayerStore(state => state.setVolume);
   const isMuted = usePlayerStore(state => state.isMuted);
   const toggleMute = usePlayerStore(state => state.toggleMute);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
   const setIsMuted = (muted: boolean | ((prev: boolean) => boolean)) => {
     if (typeof muted === 'function') {
       usePlayerStore.setState(state => ({ isMuted: muted(state.isMuted) }));
@@ -181,6 +183,7 @@ const App: React.FC = () => {
   const [isAutoDJLoading, setIsAutoDJLoading] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const [mainPlayerVisible, setMainPlayerVisible] = useState(true);
   const mainPlayerRef = useRef<HTMLDivElement>(null);
 
@@ -622,12 +625,41 @@ const App: React.FC = () => {
       }
     };
     
-    audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('timeupdate', handleTimeUpdate);
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       isCrossfadingRef.current = false;
     };
   }, [currentSong?.id, queue, crossfadeDuration]);
+
+  // --- AUDIO EVENT SYNC FOR PLAY/PAUSE AND SEEK BAR ---
+  useEffect(() => {
+    const audio = hiddenAudioRef.current;
+    if (!audio) return;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
+    const handleTimeUpdate = () => setCurrentPlaybackTime(audio.currentTime);
+    const handleLoadedMetadata = () => setAudioDuration(audio.duration || 0);
+    const handleDurationChange = () => setAudioDuration(audio.duration || 0);
+
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('durationchange', handleDurationChange);
+
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('durationchange', handleDurationChange);
+    };
+  }, [setIsPlaying]);
 
 
   // --- PHASE 1: NOW PLAYING NOTIFICATION ---
@@ -1298,9 +1330,34 @@ const App: React.FC = () => {
                 {/* Audio Visualizer */}
                 <AudioVisualizer 
                   analyser={musicAnalyser} 
-                  isPlaying={!hiddenAudioRef.current?.paused} 
+                  isPlaying={isPlaying} 
                   size="sm"
                 />
+              </div>
+
+              {/* Seek Bar */}
+              <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-md">
+                <span className="text-[10px] font-mono text-[var(--text-muted)] w-10 text-right">
+                  {Math.floor(currentPlaybackTime / 60)}:{String(Math.floor(currentPlaybackTime % 60)).padStart(2, '0')}
+                </span>
+                <input 
+                  type="range"
+                  min="0"
+                  max={audioDuration || 100}
+                  value={currentPlaybackTime}
+                  onChange={(e) => {
+                    const time = parseFloat(e.target.value);
+                    if (hiddenAudioRef.current) {
+                      hiddenAudioRef.current.currentTime = time;
+                    }
+                    setCurrentPlaybackTime(time);
+                  }}
+                  className="flex-1 h-1 accent-[var(--primary)] cursor-pointer"
+                  title="Seek"
+                />
+                <span className="text-[10px] font-mono text-[var(--text-muted)] w-10">
+                  {Math.floor(audioDuration / 60)}:{String(Math.floor(audioDuration % 60)).padStart(2, '0')}
+                </span>
               </div>
 
 
@@ -1322,11 +1379,19 @@ const App: React.FC = () => {
 
                 {/* Play/Pause */}
                 <button 
-                  onClick={() => hiddenAudioRef.current?.paused ? hiddenAudioRef.current?.play() : hiddenAudioRef.current?.pause()}
+                  onClick={() => {
+                    if (hiddenAudioRef.current) {
+                      if (isPlaying) {
+                        hiddenAudioRef.current.pause();
+                      } else {
+                        hiddenAudioRef.current.play().catch(e => console.warn('Play failed:', e));
+                      }
+                    }
+                  }}
                   className="p-3 bg-[var(--primary)] text-black rounded-full hover:opacity-90 transition-opacity"
                   title="Play/Pause (Space)"
                 >
-                  {hiddenAudioRef.current?.paused ? <ICONS.Play size={24} fill="currentColor" /> : <ICONS.Pause size={24} fill="currentColor" />}
+                  {isPlaying ? <ICONS.Pause size={24} fill="currentColor" /> : <ICONS.Play size={24} fill="currentColor" />}
                 </button>
 
                 {/* Next */}
