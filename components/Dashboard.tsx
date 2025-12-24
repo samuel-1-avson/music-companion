@@ -22,7 +22,6 @@ const PROVIDER_CONFIG: Record<MusicProvider, { label: string; icon: any }> = {
   'YOUTUBE': { label: 'YouTube', icon: ICONS.Play },
   'SPOTIFY': { label: 'Spotify', icon: ICONS.Music },
   'APPLE': { label: 'Apple Music', icon: ICONS.Radio },
-  'DEEZER': { label: 'Deezer', icon: ICONS.Activity },
   'LASTFM': { label: 'Last.fm', icon: ICONS.Radio },
   'SOUNDCLOUD': { label: 'SoundCloud', icon: ICONS.Waves },
 };

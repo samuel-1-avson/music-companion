@@ -51,7 +51,7 @@ export type Theme =
   | 'neobrutalism'
   | 'retro';
 
-export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER' | 'LASTFM' | 'SOUNDCLOUD';
+export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'LASTFM' | 'SOUNDCLOUD';
 
 // --- DEVELOPER API TYPES ---
 

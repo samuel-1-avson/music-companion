@@ -8,8 +8,8 @@ export interface MusicResult {
   album: string;
   artworkUrl: string;
   duration: number; // seconds
-  source: 'YOUTUBE' | 'ITUNES' | 'DEEZER';
-  downloadUrl?: string; // For iTunes/Deezer previews
+  source: 'YOUTUBE' | 'ITUNES';
+  downloadUrl?: string; // For iTunes previews
   videoId?: string; // For YouTube
 }
 
@@ -28,7 +28,7 @@ const getRandomInstance = () => {
 
 // Helper to fetch JSON with CORS proxy fallback
 const fetchJson = async (url: string) => {
-    // Try Proxy immediately for Invidious/Deezer to save time on timeouts and CORS
+    // Try Proxy immediately for Invidious to save time on timeouts and CORS
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
     const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
@@ -97,27 +97,6 @@ const searchAppleInternal = async (query: string): Promise<MusicResult[]> => {
         console.error("Apple Music search failed", e);
         return [];
      }
-};
-
-const searchDeezerInternal = async (query: string): Promise<MusicResult[]> => {
-    try {
-        const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=12`;
-        const data = await fetchJson(url);
-        
-        return (data.data || []).map((item: any) => ({
-            id: item.id.toString(),
-            title: item.title,
-            artist: item.artist.name,
-            album: item.album.title,
-            artworkUrl: item.album.cover_medium,
-            duration: item.duration,
-            source: 'DEEZER',
-            downloadUrl: item.preview
-        }));
-    } catch (e) {
-        console.error("Deezer search failed", e);
-        return [];
-    }
 };
 
 // --- PUBLIC API ---

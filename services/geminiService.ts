@@ -186,7 +186,7 @@ export const generatePlaylistFromContext = async (
                 if (provider === 'SPOTIFY' && spotifyToken) {
                     return await searchSpotifyTrack(spotifyToken, q);
                 } 
-                // Otherwise use the unified search (handles YT, Apple, Deezer)
+                // Otherwise use the unified search (handles YT, Apple)
                 else {
                     const results = await searchUnified(provider, q, spotifyToken);
                     return results.length > 0 ? results[0] : null;

@@ -83,9 +83,6 @@ router.get('/search', async (req, res) => {
       case 'APPLE':
         results = await searchAppleMusic(q as string, limitNum);
         break;
-      case 'DEEZER':
-        results = await searchDeezer(q as string, limitNum);
-        break;
       case 'LASTFM':
         results = await searchLastFm(q as string, limitNum);
         break;
@@ -365,30 +362,6 @@ async function searchAppleMusic(query: string, limit: number): Promise<Song[]> {
     }));
   } catch (e) {
     console.error('Apple Music search error:', e);
-    return [];
-  }
-}
-
-// --- DEEZER ---
-
-async function searchDeezer(query: string, limit: number): Promise<Song[]> {
-  try {
-    const url = `${CORS_PROXY}${encodeURIComponent(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`)}`;
-    const response = await axios.get(url);
-
-    return response.data.data.map((track: any) => ({
-      id: `dz-${track.id}`,
-      title: track.title,
-      artist: track.artist?.name || 'Unknown',
-      album: track.album?.title || 'Unknown',
-      duration: formatDuration(track.duration || 0),
-      coverUrl: track.album?.cover_medium || '',
-      mood: 'Deezer',
-      previewUrl: track.preview,
-      externalUrl: track.link
-    }));
-  } catch (e) {
-    console.error('Deezer search error:', e);
     return [];
   }
 }

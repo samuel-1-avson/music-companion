@@ -38,7 +38,7 @@ const DOMAIN_CATEGORIES = {
   ],
   music: [
     'spotify.com', 'music.apple.com', 'soundcloud.com',
-    'pandora.com', 'deezer.com', 'tidal.com',
+    'pandora.com', 'tidal.com',
     'music.youtube.com', 'bandcamp.com'
   ],
   productivity: [

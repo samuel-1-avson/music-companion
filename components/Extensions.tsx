@@ -252,7 +252,6 @@ const Extensions: React.FC<ExtensionsProps> = ({
       { id: 'YOUTUBE', label: 'YouTube Network', icon: ICONS.Play, desc: 'Global video database. No login required. Best for variety.', color: '#FF0000' },
       { id: 'SPOTIFY', label: 'Spotify Connect', icon: ICONS.Music, desc: 'Premium streaming & device control. Requires Auth.', color: '#1DB954' },
       { id: 'APPLE', label: 'Apple Music', icon: ICONS.Radio, desc: 'iTunes Store preview network. High quality snippets.', color: '#FA243C' },
-      { id: 'DEEZER', label: 'Deezer Flow', icon: ICONS.Activity, desc: 'Dynamic flow recommendations and previews.', color: '#FEAA2D' },
   ];
 
   const SCOPES: { value: ApiScope; label: string; desc: string }[] = [

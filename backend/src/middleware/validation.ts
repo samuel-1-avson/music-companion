@@ -129,7 +129,7 @@ export const registerSchema = z.object({
 /** Music: Search request */
 export const searchMusicSchema = z.object({
   query: sanitizedString(200),
-  provider: z.enum(['spotify', 'youtube', 'deezer', 'applemusic']).optional(),
+  provider: z.enum(['spotify', 'youtube', 'applemusic']).optional(),
   limit: positiveInt(50).optional(),
 });
 

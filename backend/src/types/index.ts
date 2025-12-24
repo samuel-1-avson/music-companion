@@ -18,7 +18,7 @@ export interface Song {
   externalUrl?: string;
 }
 
-export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'DEEZER' | 'LASTFM';
+export type MusicProvider = 'SPOTIFY' | 'YOUTUBE' | 'APPLE' | 'LASTFM';
 
 // --- API Types ---
 
