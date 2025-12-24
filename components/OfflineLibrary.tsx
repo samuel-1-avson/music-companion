@@ -16,11 +16,8 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
   const { user, isAuthenticated } = useAuth();
   
   const [songs, setSongs] = useState<Song[]>([]);
-  const [serverDownloads, setServerDownloads] = useState<downloadService.DownloadRecord[]>([]);
-  const [cloudDownloads, setCloudDownloads] = useState<any[]>([]);
-  const [storageStats, setStorageStats] = useState<downloadService.DownloadStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'LIBRARY' | 'DOWNLOADER' | 'SERVER' | 'CLOUD'>('LIBRARY');
+  const [activeTab, setActiveTab] = useState<'LIBRARY' | 'DOWNLOADER'>('LIBRARY');
   
   // Library Management State
   const [localFilter, setLocalFilter] = useState('');
@@ -41,19 +38,7 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
 
   useEffect(() => {
     loadSongs();
-    loadServerDownloads();
-    if (isAuthenticated && user?.id) {
-      loadCloudDownloads();
-    }
-  }, [isAuthenticated, user?.id]);
-
-  // Refresh cloud downloads when switching to CLOUD tab
-  useEffect(() => {
-    if (activeTab === 'CLOUD' && isAuthenticated && user?.id) {
-      console.log('[CloudDownloads] Tab switched to CLOUD, refreshing...');
-      loadCloudDownloads();
-    }
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
       if (logEndRef.current) {
@@ -69,47 +54,6 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
       console.error("Failed to load offline songs", e);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadServerDownloads = async () => {
-    const data = await downloadService.getAllDownloads();
-    if (data) {
-      setServerDownloads(data.downloads.filter(d => d.status === 'complete'));
-      setStorageStats(data.stats);
-    }
-  };
-
-  const loadCloudDownloads = async () => {
-    if (!user?.id) {
-      console.log('[CloudDownloads] No user ID, skipping load');
-      return;
-    }
-    console.log('[CloudDownloads] Loading for user:', user.id);
-    try {
-      const response = await api.get(`/api/downloads/user/${user.id}`);
-      console.log('[CloudDownloads] Response:', response.data);
-      
-      // Handle both response formats:
-      // 1. Wrapped: {success: true, data: {downloads: [...]}}
-      // 2. Direct: {downloads: [...]} or just the downloads array
-      let downloads: any[] = [];
-      
-      if (response.data?.success && response.data?.data?.downloads) {
-        // Wrapped format
-        downloads = response.data.data.downloads;
-      } else if (response.data?.downloads) {
-        // Direct format: {downloads: [...], count: N}
-        downloads = response.data.downloads;
-      } else if (Array.isArray(response.data)) {
-        // Just an array
-        downloads = response.data;
-      }
-      
-      console.log('[CloudDownloads] Setting', downloads.length, 'downloads');
-      setCloudDownloads(downloads);
-    } catch (err) {
-      console.error('[CloudDownloads] Failed to load:', err);
     }
   };
 
@@ -267,38 +211,7 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
       addLog(`[video] ${track.videoId}`);
       
       try {
-          // If user is authenticated, sync metadata to cloud AND download locally
-          if (isAuthenticated && user?.id) {
-              addLog(`[cloud] User authenticated, syncing metadata to cloud...`);
-              
-              // Sync metadata to cloud (Telegram-style - just records, no file upload)
-              try {
-                  const syncResponse = await api.post(`/api/downloads/user/${user.id}`, {
-                      videoId: track.videoId,
-                      title: track.title,
-                      artist: track.artist,
-                      duration: formatDuration(track.duration),
-                      coverUrl: track.artworkUrl
-                  });
-                  
-                  if (syncResponse.data?.success) {
-                      if (syncResponse.data?.data?.cached) {
-                          addLog(`[cloud] ✓ Already in your download history!`);
-                      } else {
-                          addLog(`[cloud] ✓ Synced to download history!`);
-                      }
-                      // Reload cloud downloads to show the new record
-                      await loadCloudDownloads();
-                  } else {
-                      addLog(`[cloud] Warning: Could not sync metadata`);
-                  }
-              } catch (syncErr) {
-                  addLog(`[cloud] Warning: Metadata sync failed, continuing with local download...`);
-                  console.error('Cloud sync error:', syncErr);
-              }
-          }
-          
-          // Now proceed with the actual download to LOCAL storage
+          // Download via yt-dlp on server, then stream blob to local storage
           addLog(`[download] Starting server-side download via yt-dlp...`);
           const result = await downloadService.startDownload({
               videoId: track.videoId,
@@ -313,15 +226,8 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
           }
           
           if (result.cached) {
-              addLog(`[cache] Song already in server library!`);
-              addLog(`[success] Ready to play from server.`);
-              setDownloadingIds(prev => {
-                  const next = new Set(prev);
-                  next.delete(track.videoId!);
-                  return next;
-              });
-              await loadServerDownloads();
-              return;
+              addLog(`[cache] Song cached on server, fetching...`);
+              // Even if cached, we still need to save to local
           }
           
           addLog(`[queue] Download started (ID: ${result.id})`);
@@ -334,21 +240,21 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
               } else if (status.status === 'processing') {
                   addLog(`[ffmpeg] Converting to MP3...`);
               } else if (status.status === 'complete') {
-                  addLog(`[success] Download complete! File saved to server.`);
+                  addLog(`[success] Download complete!`);
                   addLog(`[size] ${(status.file_size / 1024 / 1024).toFixed(2)} MB`);
                   
-                  // Auto-save to local library
-                  addLog(`[sync] Syncing to local library...`);
+                  // Save to local IndexedDB
+                  addLog(`[save] Saving to local library...`);
                   try {
                       const streamUrl = downloadService.getStreamUrl(status.id);
                       const response = await fetch(streamUrl);
                       const blob = await response.blob();
                       
                       const localSong: Song = {
-                          id: `server-local-${status.id}-${Date.now()}`,
+                          id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                           title: status.title,
                           artist: status.artist || 'Unknown Artist',
-                          album: 'Server Download',
+                          album: 'Downloaded',
                           duration: status.duration || '0:00',
                           coverUrl: status.cover_url || track.artworkUrl || 'https://picsum.photos/200/200?grayscale',
                           mood: 'Downloaded',
@@ -359,10 +265,13 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                       
                       await saveSong(localSong);
                       await loadSongs();
-                      addLog(`[sync] ✓ Added to local library!`);
-                  } catch (syncErr) {
-                      addLog(`[sync] Failed to sync to local library`);
-                      console.error('Auto-sync failed:', syncErr);
+                      addLog(`[success] ✓ Saved to local library!`);
+                      
+                      // Auto-switch to library tab
+                      setTimeout(() => setActiveTab('LIBRARY'), 1000);
+                  } catch (saveErr) {
+                      addLog(`[error] Failed to save to local library`);
+                      console.error('Local save failed:', saveErr);
                   }
                   
                   setDownloadingIds(prev => {
@@ -370,7 +279,6 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                       next.delete(track.videoId!);
                       return next;
                   });
-                  loadServerDownloads();
               } else if (status.status === 'error') {
                   addLog(`[error] ${status.error}`);
                   setDownloadingIds(prev => {
@@ -391,74 +299,6 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
       }
   };
 
-  // Play a server-side downloaded track
-  const playServerTrack = (record: downloadService.DownloadRecord) => {
-      const song: Song = {
-          id: `server-${record.id}`,
-          title: record.title,
-          artist: record.artist || 'Unknown Artist',
-          album: 'Server Download',
-          duration: record.duration || '0:00',
-          coverUrl: record.cover_url || 'https://picsum.photos/200/200?grayscale',
-          mood: 'Downloaded',
-          isOffline: true,
-          externalUrl: downloadService.getStreamUrl(record.id)
-      };
-      onPlaySong(song);
-  };
-
-  // Delete a server download
-  const deleteServerTrack = async (id: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (window.confirm("Delete this download from the server?")) {
-          await downloadService.deleteDownload(id);
-          await loadServerDownloads();
-      }
-  };
-
-  // Save a server download to local library
-  const [savingToLibrary, setSavingToLibrary] = useState<Set<string>>(new Set());
-  
-  const saveToLibrary = async (record: downloadService.DownloadRecord, e: React.MouseEvent) => {
-      e.stopPropagation();
-      
-      setSavingToLibrary(prev => new Set(prev).add(record.id));
-      
-      try {
-          // Fetch audio blob from server stream
-          const streamUrl = downloadService.getStreamUrl(record.id);
-          const response = await fetch(streamUrl);
-          const blob = await response.blob();
-          
-          // Create song object for local storage
-          const song: Song = {
-              id: `server-local-${record.id}-${Date.now()}`,
-              title: record.title,
-              artist: record.artist || 'Unknown Artist',
-              album: 'Server Download',
-              duration: record.duration || '0:00',
-              coverUrl: record.cover_url || 'https://picsum.photos/200/200?grayscale',
-              mood: 'Downloaded',
-              fileBlob: blob,
-              isOffline: true,
-              addedAt: Date.now()
-          };
-          
-          await saveSong(song);
-          await loadSongs();
-          
-          alert(`"${record.title}" added to local library!`);
-      } catch (err) {
-          console.error('Failed to save to library:', err);
-          alert('Failed to save to library. Please try again.');
-      } finally {
-          setSavingToLibrary(prev => {
-              const next = new Set(prev);
-              next.delete(record.id);
-              return next;
-          });
-      }
-  };
 
   return (
     <div className="h-full flex flex-col relative overflow-hidden bg-[var(--bg-main)]">
@@ -471,7 +311,7 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                 <h2 className="text-3xl font-black tracking-tight text-[var(--text-main)] uppercase">Offline Hub</h2>
             </div>
             <p className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest">
-                Local: {songs.length} Tracks • Server: {serverDownloads.length} Tracks {storageStats && `• ${storageStats.totalSizeMB} MB`}
+                {songs.length} Tracks in Local Library
             </p>
           </div>
           
@@ -483,25 +323,11 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                   <ICONS.ListMusic size={14} /> LOCAL
               </button>
               <button 
-                onClick={() => setActiveTab('SERVER')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${activeTab === 'SERVER' ? 'bg-[var(--text-main)] text-[var(--bg-main)] shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}`}
-              >
-                  <ICONS.Server size={14} /> SERVER
-              </button>
-              <button 
                 onClick={() => setActiveTab('DOWNLOADER')}
                 className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${activeTab === 'DOWNLOADER' ? 'bg-[var(--text-main)] text-[var(--bg-main)] shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}`}
               >
                   <ICONS.DownloadCloud size={14} /> DOWNLOAD
               </button>
-              {isAuthenticated && (
-                <button 
-                  onClick={() => setActiveTab('CLOUD')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${activeTab === 'CLOUD' ? 'bg-[var(--text-main)] text-[var(--bg-main)] shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}`}
-                >
-                    <ICONS.HardDrive size={14} /> CLOUD
-                </button>
-              )}
           </div>
        </div>
 
@@ -592,104 +418,6 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
 
                               <button 
                                   onClick={(e) => handleDelete(song.id, e)}
-                                  className="absolute top-2 right-2 p-2 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                              >
-                                  <ICONS.Trash size={14} />
-                              </button>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          )}
-
-          {/* --- SERVER DOWNLOADS VIEW --- */}
-          {activeTab === 'SERVER' && (
-              <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  
-                  {/* Stats Banner */}
-                  {storageStats && (
-                      <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 text-center">
-                              <div className="text-2xl font-bold text-[var(--text-main)]">{storageStats.totalFiles}</div>
-                              <div className="text-xs font-mono text-[var(--text-muted)] uppercase">Tracks Cached</div>
-                          </div>
-                          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 text-center">
-                              <div className="text-2xl font-bold text-[var(--text-main)]">{storageStats.totalSizeMB} MB</div>
-                              <div className="text-xs font-mono text-[var(--text-muted)] uppercase">Storage Used</div>
-                          </div>
-                          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 text-center">
-                              <div className="text-2xl font-bold text-[var(--text-main)]">{storageStats.totalDownloads}</div>
-                              <div className="text-xs font-mono text-[var(--text-muted)] uppercase">Total Plays</div>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* Info Banner */}
-                  <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 flex items-center gap-4">
-                      <ICONS.Server size={24} className="text-green-500" />
-                      <div>
-                          <h4 className="font-bold text-[var(--text-main)]">Server-Side Downloads (yt-dlp)</h4>
-                          <p className="text-xs text-[var(--text-muted)]">
-                              Songs are extracted from YouTube using yt-dlp and cached on the server. 
-                              Same songs won't be re-downloaded, saving bandwidth and time.
-                          </p>
-                      </div>
-                  </div>
-
-                  {/* Empty State */}
-                  {serverDownloads.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)] border-2 border-dashed border-[var(--border)] rounded-3xl bg-[var(--bg-card)]/30">
-                          <div className="bg-[var(--bg-card)] p-4 rounded-full mb-4 shadow-sm">
-                              <ICONS.Server size={48} className="opacity-50" />
-                          </div>
-                          <h3 className="text-lg font-bold font-mono uppercase">No Server Downloads</h3>
-                          <p className="text-sm mt-2 opacity-70">Go to the DOWNLOAD tab to save tracks.</p>
-                      </div>
-                  )}
-
-                  {/* Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {serverDownloads.map(record => (
-                          <div 
-                              key={record.id} 
-                              onClick={() => playServerTrack(record)}
-                              className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 flex gap-3 hover:shadow-lg transition-all cursor-pointer relative overflow-hidden"
-                          >
-                              <div className="w-20 h-20 rounded-xl overflow-hidden relative flex-shrink-0 bg-gray-200">
-                                  <img src={record.cover_url || 'https://picsum.photos/200/200?grayscale'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="art" />
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                      <ICONS.Play size={24} className="text-white fill-current" />
-                                  </div>
-                              </div>
-                              
-                              <div className="flex-1 flex flex-col justify-center min-w-0">
-                                  <h4 className="font-bold text-sm text-[var(--text-main)] truncate leading-tight mb-1">{record.title}</h4>
-                                  <p className="text-xs text-[var(--text-muted)] truncate mb-2">{record.artist || 'Unknown'}</p>
-                                  <div className="flex items-center gap-2">
-                                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-green-600 border border-green-500/30">
-                                          SERVER
-                                      </span>
-                                      <span className="text-[10px] font-mono text-[var(--text-muted)] opacity-60">
-                                          {(record.file_size / 1024 / 1024).toFixed(1)} MB
-                                      </span>
-                                  </div>
-                              </div>
-
-                              <button 
-                                  onClick={(e) => saveToLibrary(record, e)}
-                                  disabled={savingToLibrary.has(record.id)}
-                                  className="absolute top-2 right-10 p-2 text-[var(--text-muted)] hover:text-green-600 hover:bg-green-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                  title="Add to Local Library"
-                              >
-                                  {savingToLibrary.has(record.id) ? (
-                                      <ICONS.Loader size={14} className="animate-spin" />
-                                  ) : (
-                                      <ICONS.Download size={14} />
-                                  )}
-                              </button>
-
-                              <button 
-                                  onClick={(e) => deleteServerTrack(record.id, e)}
                                   className="absolute top-2 right-2 p-2 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
                               >
                                   <ICONS.Trash size={14} />
@@ -839,78 +567,6 @@ const OfflineLibrary: React.FC<OfflineLibraryProps> = ({ onPlaySong }) => {
                           </div>
                       </div>
 
-                  </div>
-              </div>
-          )}
-
-          {/* --- CLOUD DOWNLOADS VIEW (Telegram-style: metadata only) --- */}
-          {activeTab === 'CLOUD' && (
-              <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  
-                  {/* Info Banner */}
-                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4 flex items-center gap-4">
-                      <ICONS.HardDrive size={24} className="text-purple-500" />
-                      <div>
-                          <h4 className="font-bold text-[var(--text-main)]">Cloud Library</h4>
-                          <p className="text-xs text-[var(--text-muted)]">
-                            Your download history synced across devices. Click "Re-download" to save songs on this device.
-                          </p>
-                      </div>
-                  </div>
-
-                  {/* Empty State */}
-                  {cloudDownloads.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)] border-2 border-dashed border-[var(--border)] rounded-3xl bg-[var(--bg-card)]/30">
-                          <div className="bg-[var(--bg-card)] p-4 rounded-full mb-4 shadow-sm">
-                              <ICONS.HardDrive size={48} className="opacity-50" />
-                          </div>
-                          <h3 className="text-lg font-bold font-mono uppercase">No Cloud Downloads</h3>
-                          <p className="text-sm mt-2 opacity-70">Your downloaded songs will appear here.</p>
-                      </div>
-                  )}
-
-                  {/* Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {cloudDownloads.map((record: any) => (
-                          <div 
-                              key={record.id} 
-                              className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 flex gap-3 hover:shadow-lg transition-all relative overflow-hidden"
-                          >
-                              <div className="w-20 h-20 rounded-xl overflow-hidden relative flex-shrink-0 bg-gray-200">
-                                  <img src={record.coverUrl || 'https://picsum.photos/200/200?grayscale'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="art" />
-                              </div>
-                              
-                              <div className="flex-1 flex flex-col justify-center min-w-0">
-                                  <h4 className="font-bold text-sm text-[var(--text-main)] truncate leading-tight mb-1">{record.title}</h4>
-                                  <p className="text-xs text-[var(--text-muted)] truncate mb-2">{record.artist || 'Unknown'}</p>
-                                  <div className="flex items-center gap-2">
-                                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 border border-purple-500/30">
-                                          {record.status === 'synced' ? 'SYNCED' : 'CLOUD'}
-                                      </span>
-                                      <span className="text-[10px] font-mono text-[var(--text-muted)] opacity-60">
-                                          {record.duration || '0:00'}
-                                      </span>
-                                  </div>
-                              </div>
-
-                              {/* Re-download button (Telegram-style) */}
-                              <button 
-                                  onClick={() => {
-                                      // Switch to DOWNLOAD tab and pre-search for this song
-                                      setSearchQuery(`${record.title} ${record.artist || ''}`);
-                                      setActiveTab('DOWNLOADER');
-                                      // Auto-search after a short delay
-                                      setTimeout(() => {
-                                          performSearch();
-                                      }, 100);
-                                  }}
-                                  className="absolute top-2 right-2 p-2 text-purple-500 hover:bg-purple-500/20 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                  title="Re-download to this device"
-                              >
-                                  <ICONS.DownloadCloud size={16} />
-                              </button>
-                          </div>
-                      ))}
                   </div>
               </div>
           )}
