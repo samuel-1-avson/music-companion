@@ -280,10 +280,30 @@ export const searchUnified = async (
 };
 
 export const getYouTubeAudioStream = async (videoId: string): Promise<string | null> => {
-  // Try multiple instances to find a working stream
+  if (!videoId) return null;
+  
+  // Clean videoId - remove 'yt-' prefix if present
+  const cleanVideoId = extractVideoId(videoId);
+  
+  // 1. First try the backend API (handles CORS properly)
+  try {
+    console.log('[getYouTubeAudioStream] Trying backend for:', cleanVideoId);
+    const response = await fetch(`${BACKEND_URL}/api/music/youtube/stream/${cleanVideoId}`);
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data?.url) {
+        console.log('[getYouTubeAudioStream] Got stream from backend');
+        return result.data.url;
+      }
+    }
+  } catch (e) {
+    console.warn('[getYouTubeAudioStream] Backend failed:', e);
+  }
+  
+  // 2. Fallback to direct Invidious instances (may have CORS issues in browser)
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
-      const url = `${instance}/api/v1/videos/${videoId}`;
+      const url = `${instance}/api/v1/videos/${cleanVideoId}`;
       const data = await fetchJson(url);
       
       // Look for audio-only adaptive formats first
@@ -294,6 +314,7 @@ export const getYouTubeAudioStream = async (videoId: string): Promise<string | n
       audioStreams.sort((a: any, b: any) => parseInt(b.bitrate) - parseInt(a.bitrate));
       
       if (audioStreams.length > 0) {
+         console.log('[getYouTubeAudioStream] Got stream from Invidious');
          return audioStreams[0].url;
       }
       
@@ -306,6 +327,8 @@ export const getYouTubeAudioStream = async (videoId: string): Promise<string | n
       continue;
     }
   }
+  
+  console.warn('[getYouTubeAudioStream] All sources failed for:', cleanVideoId);
   return null;
 };
 
