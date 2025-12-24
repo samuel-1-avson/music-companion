@@ -51,9 +51,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     onChangeView, 
     spotifyToken, 
     moodData,
-    musicProvider = 'YOUTUBE', 
+    musicProvider: rawMusicProvider = 'YOUTUBE', 
     onSetMusicProvider
 }) => {
+  // Fallback to YOUTUBE if provider is not in config (e.g., DEEZER was removed)
+  const musicProvider: MusicProvider = (rawMusicProvider in PROVIDER_CONFIG) 
+    ? rawMusicProvider 
+    : 'YOUTUBE';
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [appResults, setAppResults] = useState<typeof APP_SHORTCUTS>([]);
